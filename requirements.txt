@@ -1,0 +1,19 @@
+Flask==3.0.3
+flask-cors==4.0.0
+Flask-Migrate==4.0.7
+Flask-SQLAlchemy==3.1.1
+Flask-Caching==2.3.0
+SQLAlchemy==2.0.32
+pydantic==2.7.4
+pandas==2.2.2
+numpy==1.26.4
+scikit-learn==1.5.1
+joblib==1.4.2
+ortools==9.10.4067
+APScheduler==3.10.4
+python-dotenv==1.0.1
+requests==2.32.3
+uvicorn==0.30.1
+# optional: transformers torch for better NLP sentiment if desired
+# transformers==4.41.2
+# torch==2.3.1
