@@ -1,21 +1,22 @@
-from __future__ import annotations
-from flask import Blueprint, request
-from ..models import Player, ScoreObject, HypeScore
+# backend/app/routes/trades.py
+from flask import Blueprint, request, jsonify
+from app.services.advisor import trade_advice
 
-bp = Blueprint("trades", __name__)
+trades_bp = Blueprint("trades_bp", __name__)
 
+@trades_bp.post("/trades/advice")
+def trades_advice():
+    data = request.get_json(force=True, silent=True) or {}
+    season = data.get("season")
+    out_id = int(data.get("out_player_id") or data.get("out") or 0)
+    in_id  = int(data.get("in_player_id")  or data.get("in")  or 0)
+    if not out_id or not in_id:
+        return jsonify({"error":"missing player ids"}), 400
+    try:
+        res = trade_advice(out_id, in_id, season)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"error":"trade_failed", "detail":str(e)}), 500
 
-@bp.post("/advice")
-def trade_advice():
-    payload = request.get_json(force=True)
-    out_id = int(payload["out_player_id"])  # player to sell
-    in_id = int(payload["in_player_id"])   # player to buy
-    season = payload.get("season", "2024-25")
-
-    def agg(pid):
-        so = ScoreObject.query.filter_by(player_id=pid, season=season).first()
-        hs = HypeScore.query.filter_by(player_id=pid, season=season).first()
-        return (so.starting_xi_metric if so else 0.0) + 0.25 * (hs.hype_score if hs else 0.0)
-
-    delta = agg(in_id) - agg(out_id)
-    return {"expected_delta_points": delta}
+bp = trades_bp
+__all__ = ["players_bp", "bp"]

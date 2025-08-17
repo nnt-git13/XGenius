@@ -1,59 +1,79 @@
-import React from 'react'
-import ShirtCard from './ShirtCard'
-import { useSquadStore, type SquadSlot } from '../state/useSquadStore'
+import React from "react";
+import PlayerTile, { PlayerTileProps } from "./PlayerTile";
 
-const FORM: Record<string, ('GK'|'DEF'|'MID'|'FWD')[][]> = {
-  '3-4-3': [['GK'],['DEF','DEF','DEF'],['MID','MID','MID','MID'],['FWD','FWD','FWD']],
-  '4-4-2': [['GK'],['DEF','DEF','DEF','DEF'],['MID','MID','MID','MID'],['FWD','FWD']],
-  '4-3-3': [['GK'],['DEF','DEF','DEF','DEF'],['MID','MID','MID'],['FWD','FWD','FWD']],
-  '3-5-2': [['GK'],['DEF','DEF','DEF'],['MID','MID','MID','MID','MID'],['FWD','FWD']],
-}
+const TILE_MIN_W = 200;   // px
+const TILE_MAX_W = 260;   // px
+const GAP = 16;           // px
 
-export default function Pitch(){
-  const { formation, squad, bench, removeFromBench } = useSquadStore()
-  const rows = FORM[formation] ?? FORM['3-4-3']
-  const used = Array(squad.length).fill(false)
-  const take = (pos: SquadSlot['pos'])=>{
-    const idx = squad.findIndex((s,i)=>!used[i] && s.pos===pos); if(idx>=0) used[idx]=true; return idx
-  }
+type Slot = PlayerTileProps & { id: string };
+export type Pos = "GK" | "DEF" | "MID" | "FWD";
+export type PitchSlot = PlayerTileProps & { index: number };
+
+export default function Pitch({
+  rows,
+  bench,
+  onPick,
+  onRemove,
+}: {
+  rows: Record<Pos, PitchSlot[]>;
+  bench?: PitchSlot[];
+  onPick: (storeIndex: number) => void;
+  onRemove?: (storeIndex: number) => void;
+}) {
+  const Row: React.FC<{ pos: Pos; items: PitchSlot[] }> = ({ pos, items }) => {
+    const count = Math.max(items.length, 1);
+    return (
+      <div
+        className="grid justify-center"
+        style={{
+          gridTemplateColumns: `repeat(${count}, minmax(${TILE_MIN_W}px, ${TILE_MAX_W}px))`,
+          gap: GAP,
+        }}
+      >
+        {items.map((s, i) => (
+          <PlayerTile
+            key={`${pos}-${i}-${s.index}`}
+            {...s}
+            onClick={() => onPick(s.index)}
+            onRemove={onRemove ? () => onRemove(s.index) : undefined}
+          />
+        ))}
+      </div>
+    );
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="pitch">
-        <div className="pitch-inner">
-          <div className="pitch-grid">
-            {rows.map((line,i)=>(
-              <div key={i} className="pitch-row">
-                {line.map((pos,j)=>{
-                  const idx = take(pos)
-                  return idx===-1
-                    ? <div key={`${i}-${j}`} className="shirt-card min-w-[120px] text-white/40">{pos} Empty</div>
-                    : <ShirtCard key={idx} slot={squad[idx]} index={idx} gwPoints={0}/>
-                })}
-              </div>
+    <div className="w-full overflow-x-auto rounded-3xl bg-gradient-to-b from-emerald-900/40 to-emerald-900/20 p-4 md:p-6 border border-white/10">
+      <Row pos="GK" items={rows.GK} />
+      <div style={{ height: GAP }} />
+      <Row pos="DEF" items={rows.DEF} />
+      <div style={{ height: GAP }} />
+      <Row pos="MID" items={rows.MID} />
+      <div style={{ height: GAP }} />
+      <Row pos="FWD" items={rows.FWD} />
+
+      {bench && bench.length > 0 && (
+        <>
+          <div style={{ height: GAP + 4 }} />
+          <div className="text-xs text-white/60 text-center mb-2">Bench</div>
+          <div
+            className="grid justify-center"
+            style={{
+              gridTemplateColumns: `repeat(${bench.length}, minmax(${TILE_MIN_W}px, ${TILE_MAX_W}px))`,
+              gap: GAP,
+            }}
+          >
+            {bench.map((s, i) => (
+              <PlayerTile
+                key={`BENCH-${i}-${s.index}`}
+                {...s}
+                bench
+                onClick={() => onPick(s.index)}
+              />
             ))}
           </div>
-        </div>
-      </div>
-
-      {/* Bench INSIDE the card */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-        <div className="text-xs text-white/60 mb-2">Bench</div>
-        <div className="flex gap-3">
-          {bench.map((b,i)=>(
-            <div key={i} className="shirt-card min-w-[120px]">
-              {b.player ? (
-                <>
-                  <div className="text-[11px] text-white/60 mb-1">BEN</div>
-                  <ShirtCard slot={{pos:b.player.position, player:b.player}} index={-1} gwPoints={0}/>
-                  <button className="mt-2 w-full text-xs bg-white/10 rounded-md py-1 hover:bg-white/20"
-                          onClick={()=>removeFromBench(i)}>Remove</button>
-                </>
-              ) : <div className="text-white/40 text-xs">Empty</div>}
-            </div>
-          ))}
-        </div>
-      </div>
+        </>
+      )}
     </div>
-  )
+  );
 }

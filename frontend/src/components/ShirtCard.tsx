@@ -1,7 +1,11 @@
 import React from 'react'
 import Jersey from './Jersey'
-import { Lock, LockOpen, X } from 'lucide-react'
-import { useSquadStore, type SquadSlot } from '../state/useSquadStore'
+import { X } from 'lucide-react'
+import { useSquadStore } from '../state/useSquadStore'
+import type { Player } from '../lib/api'
+
+type Pos = 'GK'|'DEF'|'MID'|'FWD'
+type Slot = { pos: Pos; player?: Player | null }
 
 const kit: Record<string,string> = {
   Arsenal:'#EF0107', Chelsea:'#034694','Manchester City':'#6CABDD',
@@ -9,9 +13,9 @@ const kit: Record<string,string> = {
 }
 
 export default function ShirtCard({ slot, index, gwPoints=0 }:{
-  slot: SquadSlot; index: number; gwPoints?: number
+  slot: Slot; index: number; gwPoints?: number
 }) {
-  const { removeFromSlot, toggleLock, locks } = useSquadStore()
+  const { removeFromSlot } = useSquadStore()
   if(!slot.player) return (
     <div className="shirt-card w-[120px]">
       <div className="text-white/60 text-[11px] mb-1 tracking-wide">{slot.pos}</div>
@@ -19,14 +23,11 @@ export default function ShirtCard({ slot, index, gwPoints=0 }:{
     </div>
   )
   const p = slot.player
-  const locked = locks.includes(p.id)
   return (
     <div className="shirt-card w-[132px]">
       <div className="flex items-center justify-between mb-1">
         <span className="text-white/60 text-[11px] tracking-wide">{slot.pos}</span>
         <div className="flex gap-1">
-          <button className="p-1 rounded-md hover:bg-white/10" onClick={()=>toggleLock(p.id)}
-                  aria-label={locked?'Unlock':'Lock'}>{locked ? <Lock size={14}/> : <LockOpen size={14}/>}</button>
           <button className="p-1 rounded-md hover:bg-white/10" onClick={()=>removeFromSlot(index)} aria-label="Remove"><X size={14}/></button>
         </div>
       </div>

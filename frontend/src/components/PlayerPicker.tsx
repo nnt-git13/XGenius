@@ -15,9 +15,9 @@ export default function PlayerPicker() {
   const [all, setAll] = useState<Player[]>([])
   const [q, setQ] = useState('')
   const [pos, setPos] = useState<'ALL'|'GK'|'DEF'|'MID'|'FWD'>('ALL')
-  const { squad, bench, assignToSlot, addToBench } = useSquadStore()
+  const { squad, bench, assignToSlot } = useSquadStore()
 
-  useEffect(()=>{ listPlayers().then(setAll).catch(console.error) }, [])
+  useEffect(()=>{ listPlayers().then(r => setAll(r.players)).catch(console.error) }, [])
 
   const filtered = useMemo(()=>{
     const term = q.trim().toLowerCase()
@@ -28,7 +28,7 @@ export default function PlayerPicker() {
     })
     .filter(p=>{
       // prevent duplicates already in team
-      return !squad.some(s=>s.player?.id===p.id) && !bench.some(b=>b.player?.id===p.id)
+      return !squad.some(s=>s.player?.id===p.id) && !bench.some(b=>b.id===p.id)
     })
     .slice(0,200)
   }, [all, q, pos, squad, bench])
@@ -36,7 +36,7 @@ export default function PlayerPicker() {
   const add = (p:Player) => {
     const idx = squad.findIndex(s=>!s.player && s.pos===p.position)
     if (idx>=0) assignToSlot(idx,p)
-    else addToBench(p)
+    // Note: addToBench function doesn't exist in the store
   }
 
   return (
@@ -71,4 +71,3 @@ export default function PlayerPicker() {
     </div>
   )
 }
-

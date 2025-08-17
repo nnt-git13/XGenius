@@ -1,51 +1,104 @@
-import { listPlayers, type Player } from './api'
-import { useSquadStore } from '../state/useSquadStore'
+import { listPlayers, type Player } from "./api";
+import { useSquadStore } from "../state/useSquadStore";
 
-type Pos = 'GK'|'DEF'|'MID'|'FWD'
+type Pos = "GK" | "DEF" | "MID" | "FWD";
 
-/**
- * Pulls players from backend and fills the current formation:
- * - Uses current formation in the store to know how many of each position
- * - Picks the first N per position (backend is already sorted by name; change to price later if you like)
- * - Prevents duplicates; fills bench GK/DEF/MID/FWD as 1 each when available
- */
-export async function seedSampleXI(seasonFallback = '2024-25') {
-  const store = useSquadStore.getState()
-  const { squad, assignToSlot, addToBench, season } = store
+const POSITIONS: Pos[] = ["GK", "DEF", "MID", "FWD"];
 
-  // How many we need for each position in current XI
-  const need: Record<Pos, number> = { GK:0, DEF:0, MID:0, FWD:0 }
-  squad.forEach(s => { need[s.pos as Pos] = (need[s.pos as Pos] ?? 0) + 1 })
+function uniqById<T extends { id: number }>(arr: T[]) {
+  const seen = new Set<number>();
+  const out: T[] = [];
+  for (const x of arr) {
+    if (!seen.has(x.id)) {
+      seen.add(x.id);
+      out.push(x);
+    }
+  }
+  return out;
+}
 
-  const picked = new Set<number>()
-  const ensureUnique = (arr: Player[]) => arr.filter(p => !picked.has(p.id))
+/** Fill empty XI slots from the CSV-backed /api/players pools (idempotent). */
+export async function seedSampleXI(seasonFallback = "2024-25") {
+  const store = useSquadStore.getState();
+  const { season, assignToSlot } = store;
 
-  // Fill each line by position
-  for (const pos of ['GK','DEF','MID','FWD'] as Pos[]) {
-    if (need[pos] <= 0) continue
-    const { players } = await listPlayers({ position: pos, limit: 50, season: season || seasonFallback })
-    const pool = ensureUnique(players)
-    let remaining = need[pos]
+  // Read a fresh copy of state (don’t trust closures)
+  const squadNow = useSquadStore.getState().squad;
 
-    for (let i = 0; i < squad.length && remaining > 0; i++) {
-      if (!squad[i].player && squad[i].pos === pos) {
-        const p = pool.shift()
-        if (!p) break
-        picked.add(p.id)
-        assignToSlot(i, p)
-        remaining--
+  // Count empty slots in the XI by position + remember their indices
+  const empties: Record<Pos, number> = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+  const emptyIdxByPos: Record<Pos, number[]> = { GK: [], DEF: [], MID: [], FWD: [] };
+
+  squadNow.forEach((slot, idx) => {
+    if (!slot?.player && (slot.pos === "GK" || slot.pos === "DEF" || slot.pos === "MID" || slot.pos === "FWD")) {
+      empties[slot.pos]++;
+      emptyIdxByPos[slot.pos].push(idx);
+    }
+  });
+
+  const hasEmpties = POSITIONS.some(p => empties[p] > 0);
+  const benchHasAnything = (useSquadStore.getState().bench?.length ?? 0) > 0;
+
+  // If XI already filled and bench started, do nothing
+  if (!hasEmpties && benchHasAnything) return;
+
+  // Pull pools in parallel (ask for a healthy page so we have choices)
+  const seasonParam = season || seasonFallback;
+  const poolsResp = await Promise.all(
+    POSITIONS.map(pos => listPlayers(pos, { season: seasonParam, limit: 50, offset: 0 }))
+  );
+
+  const pools: Record<Pos, Player[]> = {
+    GK: uniqById(poolsResp[0].players),
+    DEF: uniqById(poolsResp[1].players),
+    MID: uniqById(poolsResp[2].players),
+    FWD: uniqById(poolsResp[3].players),
+  };
+
+  // Avoid picking anyone already in XI/bench
+  const alreadyPicked = new Set<number>();
+  squadNow.forEach(s => { if (s?.player) alreadyPicked.add(s.player.id); });
+  (useSquadStore.getState().bench ?? []).forEach(b => { if (b) alreadyPicked.add(b.id); });
+
+  const takeNext = (pos: Pos): Player | undefined => {
+    const pool = pools[pos];
+    while (pool.length) {
+      const p = pool.shift()!;
+      if (!alreadyPicked.has(p.id)) {
+        alreadyPicked.add(p.id);
+        return p;
       }
+    }
+    return undefined;
+  };
+
+  // Fill XI empties per position (stable indices)
+  for (const pos of POSITIONS) {
+    const targets = emptyIdxByPos[pos];
+    for (const slotIndex of targets) {
+      const choice = takeNext(pos);
+      if (!choice) break;
+      // assignToSlot(index, player)
+      assignToSlot?.(slotIndex, choice);
     }
   }
 
-  // Bench: try GK, DEF, MID, FWD (one each)
-  const benchOrder: Pos[] = ['GK','DEF','MID','FWD']
-  for (const pos of benchOrder) {
-    const { players } = await listPlayers({ position: pos, limit: 10, season: season || seasonFallback })
-    const pool = players.filter(p => !picked.has(p.id))
-    if (pool.length > 0) {
-      addToBench(pool[0])
-      picked.add(pool[0].id)
+  // Optionally seed the bench with up to one of each position IF the store supports it
+  const benchSize = (useSquadStore.getState().benchSize as number | undefined) ?? 4;
+  const addBench =
+    (useSquadStore.getState() as any).addBenchPlayer ||
+    (useSquadStore.getState() as any).addToBench ||
+    null;
+
+  if (addBench && (useSquadStore.getState().bench?.length ?? 0) < benchSize) {
+    for (const pos of POSITIONS) {
+      const currentBench = useSquadStore.getState().bench ?? [];
+      if (currentBench.length >= benchSize) break;
+      const choice = takeNext(pos);
+      if (choice) {
+        // call whichever method exists
+        (addBench as (p: Player) => void)(choice);
+      }
     }
   }
 }

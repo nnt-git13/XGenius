@@ -1,34 +1,37 @@
 import React from 'react'
-import { NavLink, Route, Routes } from 'react-router-dom'
-import AssistantPage from './AssistantPage'
+import { Routes, Route, NavLink } from 'react-router-dom'
 import MyTeamPage from './MyTeamPage'
-import ScoreEvalPage from './ScoreEvalPage'
+import AssistantPage from './AssistantPage'
 import NewsPage from './NewsPage'
+import ScoreEvalPage from './ScoreEvalPage'
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950">
-      <header className="sticky top-0 z-20 backdrop-blur bg-black/30 border-b border-white/10">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="text-xl font-bold">XGenius ⚽</div>
-          <nav className="flex gap-1">
-            <NavLink className={({isActive})=>`nav-link ${isActive?'bg-white/15':''}`} to="/assistant">LLM</NavLink>
-            <NavLink className={({isActive})=>`nav-link ${isActive?'bg-white/15':''}`} to="/team">My Team</NavLink>
-            <NavLink className={({isActive})=>`nav-link ${isActive?'bg-white/15':''}`} to="/scores">Score Eval</NavLink>
-            <NavLink className={({isActive})=>`nav-link ${isActive?'bg-white/15':''}`} to="/news">News</NavLink>
+    <div className="bg-app">
+      {/* Top Nav - glassy and wider */}
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-black/20 backdrop-blur-md">
+        <div className="page h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-lg font-semibold">
+            XGenius <span>⚽</span>
+          </div>
+          <nav className="flex items-center gap-6 text-sm text-white/70">
+            <NavLink to="/" className={({isActive})=>isActive?'text-white':'hover:text-white'}>My Team</NavLink>
+            <NavLink to="/assistant" className={({isActive})=>isActive?'text-white':'hover:text-white'}>LLM</NavLink>
+            <NavLink to="/score-eval" className={({isActive})=>isActive?'text-white':'hover:text-white'}>Score Eval</NavLink>
+            <NavLink to="/news" className={({isActive})=>isActive?'text-white':'hover:text-white'}>News</NavLink>
           </nav>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6">
+      {/* Routed pages */}
+      <div className="page py-8">
         <Routes>
-          <Route path="/" element={<MyTeamPage/>} />
-          <Route path="/assistant" element={<AssistantPage/>} />
-          <Route path="/my-team" element={<MyTeamPage/>} />
-          <Route path="/score" element={<ScoreEvalPage/>} />
-          <Route path="/news" element={<NewsPage/>} />
+          <Route path="/" element={<MyTeamPage />} />
+          <Route path="/assistant" element={<AssistantPage />} />
+          <Route path="/score-eval" element={<ScoreEvalPage />} />
+          <Route path="/news" element={<NewsPage />} />
         </Routes>
-      </main>
+      </div>
     </div>
   )
 }
