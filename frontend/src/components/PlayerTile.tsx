@@ -1,107 +1,139 @@
 import React from "react";
 import KitJersey from "./KitJersey";
-import { kitFor } from "../lib/epl";
-
-function cx(...xs: Array<string | false | undefined>) {
-  return xs.filter(Boolean).join(" ");
-}
+import clsx from "clsx";
 
 export type PlayerTileProps = {
+  position: "GK" | "DEF" | "MID" | "FWD";
   name?: string;
   team?: string;
-  position: "GK"|"DEF"|"MID"|"FWD";
   price?: number;
-  fixture?: { oppCode: string; homeAway: "H"|"A" }; // e.g. {oppCode:"CRY", homeAway:"A"}
-  captain?: boolean;
-  vice?: boolean;
-  flagged?: "injury"|"doubt"|"suspension"|"blank"|"dnp";
+  fixture?: { oppCode: string; homeAway: "H" | "A" };
+  captain?: "C" | "VC" | null;
+  flagged?: string | null;
+  empty?: boolean;
+  bench?: boolean;
   onClick?: () => void;
   onRemove?: () => void;
-  bench?: boolean;
-  empty?: boolean;
-
+  className?: string;
 };
 
-const FlagDot: React.FC<{ type?: PlayerTileProps["flagged"] }> = ({ type }) => {
-  if (!type) return null;
-  const col = {
-    injury: "bg-red-500",
-    doubt: "bg-amber-500",
-    suspension: "bg-fuchsia-600",
-    blank: "bg-slate-500",
-    dnp: "bg-slate-600",
-  }[type];
-  return <span className={cx("w-2.5 h-2.5 rounded-full", col)} />;
+const ROLE = {
+  GK: { hue: "from-teal-400/10 to-teal-400/0", ring: "ring-teal-300/30" },
+  DEF: { hue: "from-sky-400/10 to-sky-400/0", ring: "ring-sky-300/30" },
+  MID: { hue: "from-indigo-400/10 to-indigo-400/0", ring: "ring-indigo-300/30" },
+  FWD: { hue: "from-rose-400/10 to-rose-400/0", ring: "ring-rose-300/30" },
 };
 
-export default function PlayerTile(p: PlayerTileProps) {
-  const kit = kitFor(p.team);
-  const isEmpty = !!p.empty;
+export default function PlayerTile({
+  position,
+  name,
+  team,
+  price,
+  fixture,
+  captain,
+  flagged,
+  empty,
+  bench,
+  onClick,
+  onRemove,
+  className,
+}: PlayerTileProps) {
+  const role = ROLE[position];
+
   return (
-    <button
-      onClick={p.onClick}
-      aria-disabled={isEmpty}
-      className={cx(
-        "relative w-40 h-56 rounded-2xl border bg-gradient-to-b shadow",
-        "border-white/10 from-white/5 to-white/[0.03] hover:border-white/20",
-        "transition focus:outline-none focus:ring-2 focus:ring-emerald-400/50",
-        isEmpty && "opacity-70",
-        p.bench && "grayscale-[45%] opacity-90"
+    <div
+      className={clsx(
+        "group relative rounded-2xl bg-white/[0.02] ring-1 ring-inset",
+        role.ring,
+        "backdrop-blur-sm shadow-[0_8px_30px_rgba(0,0,0,0.25)]",
+        "transition-transform hover:translate-y-[-2px]",
+        bench ? "opacity-90" : "",
+        className
       )}
     >
-      {/* position + C/VC */}
-      <div className="absolute left-2 top-2 flex items-center gap-1">
-        <span className="px-1.5 py-0.5 text-[10px] rounded bg-white/10 text-white/75">{p.position}</span>
-        {p.captain && (
-          <span className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">C</span>
+      {/* role chip */}
+      <div className="absolute left-2 top-2 text-[10px] px-2 py-1 rounded-md bg-white/10 border border-white/10">
+        {position}
+      </div>
+
+      {/* captain / flag chips */}
+      <div className="absolute right-2 top-2 flex gap-1">
+        {flagged && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/30">
+            {flagged === "doubt" ? "75%" : "!"}
+          </span>
         )}
-        {!p.captain && p.vice && (
-          <span className="px-1.5 py-0.5 text-[10px] rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">V</span>
+        {captain && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/25 border border-emerald-400/30">
+            {captain}
+          </span>
         )}
       </div>
 
-      {/* status */}
-      <div className="absolute right-2 top-2">
-        <FlagDot type={p.flagged} />
-      </div>
-
-      {/* jersey */}
-      <div className="absolute inset-0 grid place-items-center">
-        <KitJersey primary={kit.primary} trim={kit.trim} size={78} />
-      </div>
-
-      {/* name pill */}
-      <div className="absolute left-2 right-2 bottom-12">
-        <div className="mx-auto max-w-[9.7rem] rounded-md bg-white/90 text-gray-900 text-[12px] font-semibold text-center py-1 px-2 shadow-sm truncate">
-          {p.empty ? "Empty" : p.name}
-        </div>
-      </div>
-
-      {/* fixture pill */}
-      <div className="absolute left-2 right-2 bottom-6">
-        <div className="mx-auto max-w-[9.7rem] rounded-md bg-white/85 text-gray-800 text-[11px] text-center py-0.5 px-2 shadow-sm truncate">
-          {p.fixture ? `${p.fixture.oppCode} (${p.fixture.homeAway})` : "—"}
-        </div>
-      </div>
-
-      {/* price chip */}
-      <div className="absolute bottom-1 w-full grid place-items-center">
-        <span className="rounded-full px-2 py-0.5 text-[11px] font-medium bg-black/40 text-white/90 border border-white/10">
-          {p.price != null ? `£${p.price.toFixed(1)}m` : "—"}
-        </span>
-      </div>
-      {!isEmpty && (
-        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2">
-            <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); p.onRemove?.(); }}
-            className="h-8 w-8 rounded-full bg-white/10 border border-white/15 hover:bg-white/20"
-            title="Remove"
-            >
-            −
-            </button>
-        </div>
+      {/* subtle role tint */}
+      <div
+        className={clsx(
+          "absolute inset-0 rounded-2xl pointer-events-none",
+          "bg-gradient-to-b",
+          role.hue
         )}
-    </button>
+      />
+
+      {/* content */}
+      <button
+        type="button"
+        onClick={onClick}
+        className={clsx(
+          "w-full flex flex-col items-center gap-2 px-4 pt-6 pb-4",
+          "text-left focus:outline-none"
+        )}
+      >
+        <KitJersey
+          className={clsx("w-[64px] h-[64px] drop-shadow-md", empty && "opacity-40")}
+          primary={empty ? "#0b1b28" : undefined}
+          accent={empty ? "#3b4d5f" : undefined}
+        />
+
+        <div
+          className={clsx(
+            "w-full rounded-lg bg-white/10 border border-white/10",
+            "px-3 py-2 text-sm font-medium text-white truncate"
+          )}
+          title={empty ? "Empty" : name}
+        >
+          {empty ? "Empty" : name}
+        </div>
+
+        <div className="w-full grid grid-cols-3 items-center gap-2 text-xs">
+          <div className="col-span-2">
+            <div className="rounded-md bg-white/5 border border-white/10 px-2 py-1 text-white/70 truncate">
+              {fixture ? `${fixture.oppCode} (${fixture.homeAway})` : team || "—"}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="inline-flex items-center px-2 py-1 rounded-full bg-white/10 border border-white/10">
+              £{typeof price === "number" ? price.toFixed(1) : "—"}m
+            </div>
+          </div>
+        </div>
+      </button>
+
+      {/* remove button */}
+      {onRemove && !empty && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className={clsx(
+            "absolute bottom-2 left-1/2 -translate-x-1/2",
+            "h-8 w-8 rounded-full bg-white/8 border border-white/10",
+            "flex items-center justify-center text-lg leading-none",
+            "hover:bg-white/12"
+          )}
+          title="Remove"
+        >
+          –
+        </button>
+      )}
+    </div>
   );
 }

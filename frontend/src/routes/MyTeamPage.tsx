@@ -33,7 +33,7 @@ export default function MyTeamPage() {
     loadSampleXI,
     runOptimize,
     refreshSummary,
-  } = useSquadStore((s: any) => ({
+  } = useSquadStore((s) => ({
     formation: s.formation,
     season: s.season,
     summary: s.summary,
@@ -51,15 +51,17 @@ export default function MyTeamPage() {
 
   const seededRef = useRef(false);
 
+  // Seed with a cheap XI once if totally empty
   useEffect(() => {
     if (seededRef.current) return;
-    const empty = !Array.isArray(squad) || squad.length === 0 || squad.every(s => !s?.player);
+    const empty = !Array.isArray(squad) || squad.length === 0 || squad.every((s) => !s?.player);
     if (empty) {
       seededRef.current = true;
       void loadSampleXI();
     }
   }, [squad, loadSampleXI]);
 
+  // Build rows for <Pitch /> from store indices (match mkEmptyXI ordering)
   const rows = useMemo(() => {
     const counts = parseFormation(formation);
     const makeTile = (index: number) => {
@@ -97,7 +99,7 @@ export default function MyTeamPage() {
 
   return (
     <div className="grid grid-cols-12 gap-8">
-      {/* LEFT */}
+      {/* LEFT / header + widgets */}
       <section className="col-span-12 2xl:col-span-12 space-y-5">
         <div className="panel">
           <div className="panel-body flex items-center justify-between">
@@ -172,7 +174,7 @@ export default function MyTeamPage() {
         </div>
       </section>
 
-      {/* RIGHT */}
+      {/* RIGHT / Pitch */}
       <aside className="col-span-12 2xl:col-span-12">
         <div className="panel sticky-top">
           <div className="panel-header">
@@ -182,7 +184,7 @@ export default function MyTeamPage() {
                 XI ·
                 <select
                   value={formation}
-                  onChange={(e) => changeFormation?.(e.target.value)}
+                  onChange={(e) => changeFormation(e.target.value)}
                   className="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-sm"
                 >
                   {['3-4-3','3-5-2','4-4-2','4-3-3','4-5-1','5-3-2','5-4-1'].map(f => (
@@ -201,11 +203,10 @@ export default function MyTeamPage() {
             </div>
           </div>
 
-          {/* NO horizontal scroll needed — pitch will fit */}
           <div className="panel-body">
             {/* Actions toolbar */}
             <div className="mb-4 flex flex-wrap gap-2">
-              <button className="btn" onClick={() => setFormation?.(formation)}>Reset XI</button>
+              <button className="btn" onClick={() => setFormation(formation)}>Reset XI</button>
               <button className="btn" onClick={clearSquad}>Clear</button>
               <button className="btn" onClick={refreshSummary}>Refresh Summary</button>
               <div className="flex-1" />
@@ -216,14 +217,15 @@ export default function MyTeamPage() {
             <DevBoundary label="Pitch">
               <Pitch
                 rows={rows as any}
-                onPick={(slotIndex: number) => openPicker?.(slotIndex)}
-                onRemove={(slotIndex: number) => removeFromSlot?.(slotIndex)}
+                onPick={(slotIndex: number) => openPicker(slotIndex)}
+                onRemove={(slotIndex: number) => removeFromSlot(slotIndex)}
               />
             </DevBoundary>
           </div>
         </div>
       </aside>
 
+      {/* Mount once */}
       <PlayerPickerModal />
     </div>
   );
