@@ -1,213 +1,229 @@
-/// <reference types="vite/client" />
-
 import axios from "axios";
 
-/** Ensure the base URL ends with a single `/api` */
-function withApiSuffix(url?: string) {
-  const base = (url ?? "").trim().replace(/\/+$/, "") || "http://localhost:5001";
-  return /\/api$/i.test(base) ? base : `${base}/api`;
-}
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
-export const api = axios.create({
-  baseURL: withApiSuffix(import.meta.env.VITE_API_URL),
-  timeout: 15000,
+console.log("API URL:", API_URL); // Debug log
+
+const client = axios.create({
+  baseURL: API_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+  timeout: 60000, // 60 second timeout (optimization can take longer)
 });
 
-// ===== Types =====
-export type Position = "GK" | "DEF" | "MID" | "FWD" | "ALL";
+// Add request interceptor for debugging
+client.interceptors.request.use(
+  (config) => {
+    console.log("API Request:", config.method?.toUpperCase(), config.url);
+    return config;
+  },
+  (error) => {
+    console.error("API Request Error:", error);
+    return Promise.reject(error);
+  }
+);
 
+// Add response interceptor for debugging
+client.interceptors.response.use(
+  (response) => {
+    console.log("API Response:", response.status, response.config.url);
+    return response;
+  },
+  (error) => {
+    console.error("API Response Error:", error.message, error.response?.status, error.config?.url);
+    // Extract error message from response if available
+    if (error.response?.data?.detail) {
+      error.message = error.response.data.detail;
+    } else if (error.response?.data?.message) {
+      error.message = error.response.data.message;
+    } else if (error.response?.statusText) {
+      error.message = `${error.response.status}: ${error.response.statusText}`;
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const api = {
+  // Dashboard
+  async getDashboardStats() {
+    try {
+      const response = await client.post("/team/evaluate", {
+        season: "2024-25",
+      }, {
+        timeout: 15000, // Increase timeout to 15 seconds
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error("API Error:", error);
+      // Return default data on error instead of throwing
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        console.warn("API timeout - returning default stats");
+        return {
+          season: "2024-25",
+          gameweek: null,
+          total_points: 0.0,
+          expected_points: 0.0,
+          risk_score: 0.5,
+          fixture_difficulty: 3.0,
+          squad_value: 0.0,
+          bank: 100.0,
+          players: [],
+          captain_id: null,
+          vice_captain_id: null,
+        };
+      }
+      throw error;
+    }
+  },
+
+  // Team
+  async evaluateTeam(data: {
+    season: string;
+    team_id?: number;
+    squad_json?: any;
+    gameweek?: number;
+  }) {
+    try {
+      // Use longer timeout for team evaluation (30 seconds)
+      const response = await client.post("/team/evaluate", data, {
+        timeout: 30000,
+      });
+      console.log("Team evaluation response:", response.status, response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error("Team evaluation error details:", {
+        message: error.message,
+        code: error.code,
+        response: error.response?.data,
+        status: error.response?.status,
+        config: error.config?.url,
+      });
+      throw error;
+    }
+  },
+
+  async getXGScore(data: {
+    season: string;
+    squad: any[];
+    gameweek?: number;
+  }) {
+    const response = await client.post("/team/xgscore", data);
+    return response.data;
+  },
+
+  // Optimization
+  async optimizeSquad(data: {
+    season: string;
+    budget: number;
+    exclude_players?: number[];
+    lock_players?: number[];
+    chip?: string;
+    horizon_gw?: number;
+  }) {
+    // Use longer timeout for optimization (60 seconds)
+    const response = await client.post("/optimize/squad", data, {
+      timeout: 60000,
+    });
+    return response.data;
+  },
+
+  // Transfers
+  async getTradeAdvice(data: {
+    season: string;
+    out_player_id: number;
+    in_player_id: number;
+    budget?: number;
+  }) {
+    const response = await client.post("/trades/advice", data);
+    return response.data;
+  },
+
+  // Copilot
+  async askCopilot(question: string) {
+    const response = await client.post("/assistant/ask", {
+      question,
+    });
+    return response.data;
+  },
+
+  // ML Predictions
+  async predictPoints(data: {
+    player_ids: number[];
+    season: string;
+    gameweek: number;
+    model_name?: string;
+  }) {
+    const response = await client.post("/ml/predict", data);
+    return response.data;
+  },
+};
+
+// Export Player type
 export type Player = {
   id: number;
   name: string;
+  position: string;
   team: string;
-  position: Exclude<Position, "ALL">;
-  /** Price in £m */
   price: number;
+  [key: string]: any;
 };
 
-export type ScoreObject = {
-  total_score?: number;
-  form?: number;
-  fixture?: number;
-  xg?: number;
-  xa?: number;
-  mins?: number;
-  clean_sheet?: number;
-  risk?: number;
-  hype?: number;
-  /** expected value for next GW */
-  ev?: number;
-};
-
-export type PlayerWithScores = Player & {
-  score?: ScoreObject;
-  hype?: number;
-  metrics?: ScoreObject;
-};
-
-export type Article = {
-  id?: string;
-  title: string;
-  url: string;
-  source?: string;
-  published_at?: string; // ISO
-  summary?: string;
-  sentiment?: "pos" | "neu" | "neg" | string;
-  teams?: string[];
-  players?: string[];
-};
-
-// ===== Players =====
-
-/** Consistent response shape from /players */
+// Standalone function: List players
 export async function listPlayers(
-  position?: Position | string,
-  params?: { q?: string; season?: string; limit?: number; offset?: number; team?: string }
+  position: string,
+  options: {
+    season?: string;
+    limit?: number;
+    offset?: number;
+    team?: string;
+  } = {}
 ): Promise<{ players: Player[]; total: number }> {
-  const { data } = await api.get("/players", {
-    params: { ...(position && position !== "ALL" ? { position } : {}), ...params },
-  });
+  const params = new URLSearchParams();
+  if (position) params.append("position", position);
+  if (options.season) params.append("season", options.season);
+  if (options.limit) params.append("limit", String(options.limit));
+  if (options.offset) params.append("offset", String(options.offset));
+  if (options.team) params.append("team", options.team);
 
-  // Normalize various possible backend shapes
-  const raw = Array.isArray(data?.players) ? data.players : Array.isArray(data) ? data : [];
-  const players: Player[] = raw.map((p: any) => ({
-    id: Number(p.id),
-    name: String(p.name ?? `${p.first_name ?? ""} ${p.second_name ?? ""}`.trim()),
-    team: String(p.team ?? p.team_name ?? ""),
-    position: String(p.position ?? p.element_type_label ?? p.element_type)?.toUpperCase(),
-    // accept `price_m`, `price`, or `now_cost` (tenths)
-    price:
-      p.price_m != null
-        ? Number(p.price_m)
-        : p.now_cost != null
-        ? Number(p.now_cost) / 10
-        : Number(p.price ?? 0),
-  })) as Player[];
-
-  const total = typeof data?.total === "number" ? data.total : players.length;
-  return { players, total };
+  const response = await client.get(`/players/?${params.toString()}`);
+  const players = Array.isArray(response.data) ? response.data : [];
+  return {
+    players,
+    total: players.length, // Backend doesn't return total, so we use array length
+  };
 }
 
-// ===== Optimization & Advice =====
-
-export async function optimizeSquad(payload: {
+// Standalone function: Optimize squad
+export async function optimizeSquad(data: {
   season: string;
   budget: number;
   exclude_players?: number[];
   lock_players?: number[];
+  chip?: string;
+  horizon_gw?: number;
+  current_squad?: number[];
 }) {
-  const { data } = await api.post("/optimize/squad", payload);
-  return data;
+  return api.optimizeSquad(data);
 }
 
-export async function askAssistant(question: string, context?: any) {
-  const { data } = await api.post("/assistant/ask", { question, context });
-  return data;
-}
-
-export async function tradeAdvice(season: string, outId: number, inId: number) {
-  const { data } = await api.post("/trades/advice", {
-    season,
-    out_player_id: outId,
-    in_player_id: inId,
-  });
-  return data;
-}
-
-// ===== Scores / Table =====
-
-/** Fetch players with attached scores if backend supports `include=`; falls back gracefully. */
-export async function fetchScoreTable(params: {
-  q?: string;
-  position?: Position;
-  team?: string;
-  limit?: number;
-  offset?: number;
-  season?: string;
-  order?: "name" | "price" | "score";
-}) {
-  const { data } = await api.get("/players", {
-    params: { include: "score,hype,metrics", ...params },
-  });
-
-  const raw = Array.isArray(data?.players) ? data.players : Array.isArray(data) ? data : [];
-  const players: PlayerWithScores[] = raw.map((p: any) => {
-    const base: Player = {
-      id: Number(p.id),
-      name: String(p.name ?? `${p.first_name ?? ""} ${p.second_name ?? ""}`.trim()),
-      team: String(p.team ?? p.team_name ?? ""),
-      position: String(p.position ?? p.element_type_label ?? p.element_type).toUpperCase(),
-      price:
-        p.price_m != null
-          ? Number(p.price_m)
-          : p.now_cost != null
-          ? Number(p.now_cost) / 10
-          : Number(p.price ?? 0),
-    } as Player;
-    const score: ScoreObject =
-      p.score || p.metrics || p.ScoreObject || (p?.scores ? p.scores : {}) || {};
-    const hype = p.hype ?? score?.hype ?? undefined;
-    return { ...base, score, hype, metrics: p.metrics };
-  });
-
-  return { players, total: data?.total ?? players.length };
-}
-
-// ===== News =====
-
-/** News feed: try /news/feed, then /hype/news, else empty. */
-export async function newsFeed(params: { q?: string; team?: string; limit?: number } = {}) {
-  try {
-    const { data } = await api.get("/news/feed", { params });
-    return { articles: (data?.articles || data || []) as Article[] };
-  } catch {
-    try {
-      const { data } = await api.get("/hype/news", { params });
-      return { articles: (data?.articles || data || []) as Article[] };
-    } catch {
-      return { articles: [] as Article[] };
-    }
-  }
-}
-
-// ===== Uploads =====
-
-/** Weekly scores CSV uploader. Supports both snake/kebab endpoints. */
-export async function uploadWeeklyScores(file: File, season: string, gw: number) {
-  const form = new FormData();
-  form.append("file", file);
-  form.append("season", season);
-  form.append("gw", String(gw));
-  try {
-    const { data } = await api.post("/ingest/weekly_scores", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    return data;
-  } catch {
-    const { data } = await api.post("/ingest/weekly-scores", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    return data;
-  }
-}
-
-// ===== Squad summary =====
-
-export async function squadSummary(payload: {
+// Standalone function: Squad summary (uses team evaluation endpoint)
+export async function squadSummary(data: {
   season: string;
   budget: number;
   xi_ids: number[];
-  bench_ids?: number[];
+  bench_ids: number[];
 }) {
-  const { data } = await api.post("/squad/summary", payload);
-  return data as {
-    value: number;
-    in_bank: number;
-    points_by_position: { GK: number; DEF: number; MID: number; FWD: number };
-    mvp?: Player & { score?: number };
-    similarity_pct: number;
-    rank_history: number[];
+  // Create squad_json from xi_ids and bench_ids
+  const squad_json = {
+    xi: data.xi_ids,
+    bench: data.bench_ids,
   };
+  
+  const response = await client.post("/team/evaluate", {
+    season: data.season,
+    squad_json,
+  });
+  
+  return response.data;
 }
-
-export default api;

@@ -3,7 +3,7 @@ import math
 import pandas as pd
 from typing import Dict
 from sqlalchemy.orm import Session
-from ..models import Player, ScoreObject
+from app.models import Player, ScoreObject
 
 
 # Heuristics combining form, upcoming fixtures difficulty, and odds

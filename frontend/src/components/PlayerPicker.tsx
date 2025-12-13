@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { listPlayers, type Player } from '../lib/api'
+// Old component - kept for reference but not actively used
+type Player = any
 import { useSquadStore } from '../state/useSquadStore'
 
 function highlight(text: string, q: string) {
@@ -17,7 +18,11 @@ export default function PlayerPicker() {
   const [pos, setPos] = useState<'ALL'|'GK'|'DEF'|'MID'|'FWD'>('ALL')
   const { squad, bench, assignToSlot } = useSquadStore()
 
-  useEffect(()=>{ listPlayers().then(r => setAll(r.players)).catch(console.error) }, [])
+  useEffect(()=>{ 
+    // Old component - not actively used in new pages
+    // listPlayers().then(r => setAll(r.players)).catch(console.error)
+    setAll([])
+  }, [])
 
   const filtered = useMemo(()=>{
     const term = q.trim().toLowerCase()

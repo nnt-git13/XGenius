@@ -1,0 +1,9 @@
+{
+  "/page": "app/page.js",
+  "/transfers/page": "app/transfers/page.js",
+  "/copilot/page": "app/copilot/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/team/page": "app/team/page.js",
+  "/optimize/page": "app/optimize/page.js",
+  "/_not-found/page": "app/_not-found/page.js"
+}

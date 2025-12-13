@@ -2,7 +2,8 @@ import React from 'react'
 import Jersey from './Jersey'
 import { X } from 'lucide-react'
 import { useSquadStore } from '../state/useSquadStore'
-import type { Player } from '../lib/api'
+// Old component
+type Player = any
 
 type Pos = 'GK'|'DEF'|'MID'|'FWD'
 type Slot = { pos: Pos; player?: Player | null }

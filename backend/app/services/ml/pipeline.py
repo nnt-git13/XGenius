@@ -1,57 +1,138 @@
-from __future__ import annotations
+"""ML training pipeline."""
 import os
 import joblib
 import numpy as np
 import pandas as pd
+from pathlib import Path
+from typing import Dict, List, Tuple
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.linear_model import Ridge
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import mean_squared_error
-from .. ..config import Config
+from sklearn.model_selection import cross_val_score
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+from app.core.config import settings
+from app.core.logging import logger
 
 
-FEATURES_NUM = ["minutes", "xg", "xa", "shots", "key_passes"]
-FEATURES_CAT = ["position", "team"]
+FEATURES_NUM = [
+    "form",
+    "avg_points_3",
+    "avg_points_5",
+    "avg_xg",
+    "avg_xa",
+    "avg_minutes",
+    "price",
+]
+FEATURES_CAT = ["position", "team_hash"]
 TARGET = "points"
 
 
-def build_pipeline(alpha: float = 1.5) -> Pipeline:
-    pre = ColumnTransformer(
+def build_ridge_pipeline(alpha: float = 1.5) -> Pipeline:
+    """Build Ridge regression pipeline."""
+    preprocessor = ColumnTransformer(
         transformers=[
             ("num", StandardScaler(), FEATURES_NUM),
-            ("cat", OneHotEncoder(handle_unknown="ignore"), FEATURES_CAT),
+            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), FEATURES_CAT),
         ]
     )
     model = Ridge(alpha=alpha, random_state=42)
-    pipe = Pipeline(steps=[("pre", pre), ("model", model)])
-    return pipe
+    return Pipeline(steps=[("preprocessor", preprocessor), ("model", model)])
 
 
-def train_on_folder(data_dir: str, out_path: str) -> dict:
-    frames = []
-    for root, _, files in os.walk(data_dir):
-        for f in files:
-            if f.endswith(".csv"):
-                frames.append(pd.read_csv(os.path.join(root, f)))
-    if not frames:
-        raise FileNotFoundError("No CSVs found for historical training")
-    df = pd.concat(frames, ignore_index=True)
-    df = df.dropna(subset=[TARGET])
-
-    X = df[FEATURES_NUM + FEATURES_CAT]
-    y = df[TARGET]
-
-    pipe = build_pipeline()
-    pipe.fit(X, y)
-
-    preds = pipe.predict(X)
-    rmse = float(np.sqrt(mean_squared_error(y, preds)))
-
-    joblib.dump({"model": pipe, "rmse": rmse}, out_path)
-    return {"rmse": rmse, "n": int(len(df))}
+def build_rf_pipeline(n_estimators: int = 100) -> Pipeline:
+    """Build Random Forest pipeline."""
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", StandardScaler(), FEATURES_NUM),
+            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), FEATURES_CAT),
+        ]
+    )
+    model = RandomForestRegressor(n_estimators=n_estimators, random_state=42, n_jobs=-1)
+    return Pipeline(steps=[("preprocessor", preprocessor), ("model", model)])
 
 
-def load_model(path: str):
-    blob = joblib.load(path)
-    return blob["model"], blob.get("rmse", None)
+def build_gb_pipeline(n_estimators: int = 100) -> Pipeline:
+    """Build Gradient Boosting pipeline."""
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", StandardScaler(), FEATURES_NUM),
+            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), FEATURES_CAT),
+        ]
+    )
+    model = GradientBoostingRegressor(n_estimators=n_estimators, random_state=42)
+    return Pipeline(steps=[("preprocessor", preprocessor), ("model", model)])
+
+
+def train_models(
+    X: pd.DataFrame,
+    y: pd.Series,
+    model_dir: Path = None,
+) -> Dict[str, Dict]:
+    """Train multiple models and save them."""
+    if model_dir is None:
+        model_dir = settings.MODEL_DIR
+    
+    model_dir.mkdir(parents=True, exist_ok=True)
+    
+    results = {}
+    
+    # Train Ridge
+    logger.info("Training Ridge model...")
+    ridge_pipe = build_ridge_pipeline()
+    ridge_pipe.fit(X, y)
+    ridge_pred = ridge_pipe.predict(X)
+    ridge_rmse = np.sqrt(mean_squared_error(y, ridge_pred))
+    ridge_mae = mean_absolute_error(y, ridge_pred)
+    
+    ridge_path = model_dir / "ridge_points.joblib"
+    joblib.dump({"model": ridge_pipe, "rmse": ridge_rmse, "mae": ridge_mae}, ridge_path)
+    results["ridge"] = {"rmse": ridge_rmse, "mae": ridge_mae, "path": str(ridge_path)}
+    
+    # Train Random Forest
+    logger.info("Training Random Forest model...")
+    rf_pipe = build_rf_pipeline()
+    rf_pipe.fit(X, y)
+    rf_pred = rf_pipe.predict(X)
+    rf_rmse = np.sqrt(mean_squared_error(y, rf_pred))
+    rf_mae = mean_absolute_error(y, rf_pred)
+    
+    rf_path = model_dir / "rf_points.joblib"
+    joblib.dump({"model": rf_pipe, "rmse": rf_rmse, "mae": rf_mae}, rf_path)
+    results["random_forest"] = {"rmse": rf_rmse, "mae": rf_mae, "path": str(rf_path)}
+    
+    # Train Gradient Boosting
+    logger.info("Training Gradient Boosting model...")
+    gb_pipe = build_gb_pipeline()
+    gb_pipe.fit(X, y)
+    gb_pred = gb_pipe.predict(X)
+    gb_rmse = np.sqrt(mean_squared_error(y, gb_pred))
+    gb_mae = mean_absolute_error(y, gb_pred)
+    
+    gb_path = model_dir / "gb_points.joblib"
+    joblib.dump({"model": gb_pipe, "rmse": gb_rmse, "mae": gb_mae}, gb_path)
+    results["gradient_boosting"] = {"rmse": gb_rmse, "mae": gb_mae, "path": str(gb_path)}
+    
+    logger.info("Model training complete", results=results)
+    return results
+
+
+def load_model(model_name: str = "ridge", model_dir: Path = None):
+    """Load a trained model."""
+    if model_dir is None:
+        model_dir = settings.MODEL_DIR
+    
+    model_map = {
+        "ridge": "ridge_points.joblib",
+        "random_forest": "rf_points.joblib",
+        "gradient_boosting": "gb_points.joblib",
+    }
+    
+    model_path = model_dir / model_map.get(model_name, "ridge_points.joblib")
+    
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model not found: {model_path}")
+    
+    blob = joblib.load(model_path)
+    return blob["model"], blob.get("rmse", None), blob.get("mae", None)

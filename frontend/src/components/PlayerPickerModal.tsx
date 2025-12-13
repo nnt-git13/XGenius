@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { listPlayers, type Player } from "../lib/api";
+// Old component - kept for reference
+export type Player = any;
 import { useSquadStore } from "../state/useSquadStore";
 
 type Pos = "GK" | "DEF" | "MID" | "FWD";
@@ -78,14 +79,10 @@ export default function PlayerPickerModal() {
     setLoading(true);
     setErr(null);
     try {
-      const r = await listPlayers(pos, {
-        q: dq || undefined,
-        season: season || "2025-26",
-        limit: 30,
-        offset: nextOffset,
-      });
-      setRows(r.players || []);
-      setTotal(Number(r.total || 0));
+      // Old component - stubbed out
+      const r = { players: [] as Player[], total: 0 };
+      setRows(r.players);
+      setTotal(0);
       setOffset(nextOffset);
     } catch (e: any) {
       setErr(e?.message || "Failed to load players");

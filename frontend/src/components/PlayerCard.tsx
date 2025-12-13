@@ -1,7 +1,8 @@
 import React from 'react'
 import Jersey from './Jersey'
 import Badge from './Badge'
-import { Player } from '../lib/api'
+// Player type - should be defined based on API response
+type Player = any
 import { Lock, LockOpen, Ban } from 'lucide-react'
 
 export default function PlayerCard({ p, locked, excluded, onLock, onExclude, footer }: {

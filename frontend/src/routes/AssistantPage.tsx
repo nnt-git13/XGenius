@@ -1,197 +1,129 @@
-import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react'
-import { askAssistant, tradeAdvice, listPlayers, type Player } from '../lib/api'
-import { useSquadStore } from '../state/useSquadStore'
-import { Send, Sparkles, ArrowLeftRight, Loader2 } from 'lucide-react'
-
-type ChatMsg = { role: 'user'|'assistant'; text: string; ts: number }
-type TradeAdviceRes = {
-  delta_ev?: number
-  delta_long_term?: number
-  reason?: string
-  error?: string
-} | null
-
-function Bubble({ msg }: { msg: ChatMsg }) {
-  const me = msg.role === 'user'
-  return (
-    <div className={`max-w-[75%] ${me ? 'ml-auto' : ''}`}>
-      <div className={`rounded-2xl px-3 py-2 text-sm border ${me ? 'bg-green-500/20 border-green-500/30' : 'bg-white/5 border-white/10'}`}>
-        {msg.text}
-      </div>
-      <div className="text-[10px] text-white/50 mt-1">{new Date(msg.ts).toLocaleTimeString()}</div>
-    </div>
-  )
-}
-
-const suggestions = [
-  'Should I captain Haaland or Saka this week?',
-  'Is a 3-5-2 better than 3-4-3 for GW1?',
-  'Which 6.5m midfielder has the best EV next 3 GWs?',
-  'Is it time to sell a Chelsea defender?'
-]
+import React, { useState } from 'react';
+import { apiClient, AssistantRequest, AssistantResponse } from '../lib/api';
+import { Send, Bot, Loader2, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function AssistantPage() {
-  const store = useSquadStore()
-  const season = store.season
-  const budget = store.budget
-  const squad = Array.isArray(store.squad) ? store.squad : [] // ✅ guard
+  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; suggestions?: string[] }>>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const [q, setQ] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [msgs, setMsgs] = useState<ChatMsg[]>([])
-  const scroller = useRef<HTMLDivElement>(null)
+  const handleSend = async () => {
+    if (!input.trim() || loading) return;
 
-  useEffect(() => {
-    scroller.current?.scrollTo({ top: 999999, behavior: 'smooth' })
-  }, [msgs])
+    const userMessage = input.trim();
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setLoading(true);
 
-  const context = useMemo(() => ({
-    season, budget,
-    squad: squad.map(s => ({ pos: s.pos, id: s.player?.id ?? null, name: s.player?.name ?? null })),
-  }), [season, budget, squad])
-
-  const send = async (text: string) => {
-    if (!text.trim()) return
-    setMsgs(m => [...m, { role: 'user', text, ts: Date.now() }])
-    setQ(''); setBusy(true)
     try {
-      // ✅ pass an object unless your helper explicitly wants a JSON string
-      const data = await askAssistant(text, context)
-      const answer = (data && (data.answer ?? data.text)) ?? JSON.stringify(data)
-      setMsgs(m => [...m, { role: 'assistant', text: answer, ts: Date.now() }])
-    } catch (e: any) {
-      setMsgs(m => [...m, { role: 'assistant', text: e?.message || 'Error contacting assistant.', ts: Date.now() }])
+      const request: AssistantRequest = {
+        question: userMessage,
+        season: '2024-25',
+      };
+
+      const response: AssistantResponse = await apiClient.askAssistant(request);
+      
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: response.answer,
+        suggestions: response.suggestions,
+      }]);
+    } catch (error) {
+      console.error('Failed to get assistant response:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.',
+      }]);
     } finally {
-      setBusy(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="grid grid-cols-12 gap-8">
-      {/* Chat takes 8–9 columns on big screens, full width on small */}
-      <section className="col-span-12 xl:col-span-8 2xl:col-span-9 panel flex flex-col h-[calc(100vh-180px)]">
-        <div className="panel-header">
-          <div className="flex items-center gap-2"><Sparkles size={16}/><div className="font-medium">Strategy Assistant</div></div>
-          <div className="text-xs text-white/60">Season {season} · Budget £{budget}m</div>
-        </div>
-
-        {/* scroller grows to fill */}
-        <div ref={scroller} className="panel-body flex-1 overflow-auto space-y-3">
-          {msgs.length === 0 && (
-            <div className="text-sm text-white/60">Ask anything about captains, transfers, chip timing, fixture runs…</div>
-          )}
-          {msgs.map((m, i) => <Bubble key={i} msg={m} />)}
-        </div>
-
-        {/* input row */}
-        <div className="border-t border-white/10 p-4 flex items-center gap-3">
-          <input
-            className="input"
-            placeholder="Ask the assistant…"
-            value={q}
-            onChange={e => setQ(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && send(q)}
-          />
-          <button onClick={() => send(q)} disabled={busy} className="btn btn-primary">
-            {busy && <Loader2 className="animate-spin" size={16}/>} <Send size={16}/>
-          </button>
-        </div>
-
-        {/* chips */}
-        <div className="border-t border-white/10 p-4 flex flex-wrap gap-2">
-          {suggestions.map(s => <button key={s} onClick={()=>send(s)} className="chip">{s}</button>)}
-        </div>
-      </section>
-
-      {/* Trade comparison sticks on the side */}
-      <aside className="col-span-12 xl:col-span-4 2xl:col-span-3">
-        <div className="panel sticky-top">
-          <div className="panel-header">
-            <div className="flex items-center gap-2"><ArrowLeftRight size={16}/><div className="font-medium">Trade comparison</div></div>
-          </div>
-          <div className="panel-body space-y-4">
-            {/* …your existing SelectPlayer + button + results … */}
-          </div>
-        </div>
-      </aside>
-    </div>
-  )
-}
-
-function TradeCompare() {
-  const { season } = useSquadStore()
-  const [all, setAll] = useState<Player[]>([])
-  const [outId, setOut] = useState<number | ''>('')
-  const [inId, setIn] = useState<number | ''>('')
-  const [res, setRes] = useState<TradeAdviceRes>(null)
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    listPlayers()
-      .then(d => setAll(Array.isArray(d) ? d : []))
-      .catch(() => setAll([]))
-  }, [season])
-
-  const go = async () => {
-    if (!outId || !inId) return
-    setBusy(true)
-    try {
-      const r = await tradeAdvice(season, Number(outId), Number(inId))
-      // ✅ ensure object shape
-      const obj = (r && typeof r === 'object') ? r as TradeAdviceRes : { error: 'Unexpected response' }
-      setRes(obj)
-    } catch {
-      setRes({ error: 'Trade advice failed' })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const isObj = (v: any): v is NonNullable<TradeAdviceRes> => !!v && typeof v === 'object'
-
-  return (
-    <section className="panel h-fit">
-      <div className="panel-header">
-        <div className="flex items-center gap-2"><ArrowLeftRight size={16}/><div className="font-medium">Trade comparison</div></div>
+    <div className="flex flex-col h-[calc(100vh-200px)]">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-2">
+          <Bot className="w-8 h-8 text-purple-400" />
+          AI Assistant
+        </h1>
+        <p className="text-gray-400">Get intelligent advice on your FPL team</p>
       </div>
-      <div className="panel-body space-y-3">
-        <div className="grid grid-cols-2 gap-2">
-          <SelectPlayer label="Out" value={outId} onChange={setOut} options={all}/>
-          <SelectPlayer label="In"  value={inId}  onChange={setIn}  options={all}/>
-        </div>
-        <button onClick={go} disabled={busy || !outId || !inId}
-                className="w-full px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10">
-          {busy ? 'Analyzing…' : 'Evaluate trade'}
-        </button>
 
-        {isObj(res) && (
-          <div className="text-sm space-y-2 bg-white/5 border border-white/10 p-3 rounded-xl">
-            {typeof res.delta_ev === 'number' && <div>Δ EV next GW: <b>{res.delta_ev.toFixed(2)}</b></div>}
-            {typeof res.delta_long_term === 'number' && <div>Δ Long-term: <b>{res.delta_long_term.toFixed(2)}</b></div>}
-            {res.reason && <div className="text-white/70">{res.reason}</div>}
-            {res.error && <div className="text-red-300">{res.error}</div>}
+      {/* Chat Messages */}
+      <div className="flex-1 overflow-y-auto space-y-4 mb-4 bg-gray-900/30 rounded-lg p-6 border border-gray-800">
+        {messages.length === 0 && (
+          <div className="text-center text-gray-400 py-12">
+            <Sparkles className="w-12 h-12 mx-auto mb-4 text-purple-400" />
+            <p>Ask me anything about your FPL team!</p>
+            <p className="text-sm mt-2">Try: "Who should I captain this week?" or "Should I transfer out [player]?"</p>
+          </div>
+        )}
+
+        <AnimatePresence>
+          {messages.map((msg, idx) => (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className={`max-w-[80%] rounded-lg p-4 ${
+                  msg.role === 'user'
+                    ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
+                    : 'bg-gray-800 text-gray-100 border border-gray-700'
+                }`}
+              >
+                <div className="whitespace-pre-wrap">{msg.content}</div>
+                {msg.suggestions && msg.suggestions.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-700">
+                    <div className="text-xs text-gray-400 mb-2">Suggestions:</div>
+                    <div className="flex flex-wrap gap-2">
+                      {msg.suggestions.map((suggestion, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setInput(suggestion)}
+                          className="text-xs px-3 py-1 bg-purple-900/50 text-purple-300 rounded-full hover:bg-purple-800/50 transition-colors"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <Loader2 className="w-5 h-5 animate-spin text-purple-400" />
+            </div>
           </div>
         )}
       </div>
-    </section>
-  )
-}
 
-function SelectPlayer({
-  label, value, onChange, options
-}:{label:string; value:number|''; onChange:(v:number|'')=>void; options:Player[]}) {
-  return (
-    <label className="text-xs">
-      <div className="mb-1 text-white/60">{label}</div>
-      <select value={value} onChange={(e)=>onChange(e.target.value ? Number(e.target.value) : '')}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-2">
-        <option value="">—</option>
-        {options.map(p => (
-          <option key={p.id} value={p.id}>
-            {p.name} · {p.team} · £{Number(p.price).toFixed(1)}m
-          </option>
-        ))}
-      </select>
-    </label>
-  )
+      {/* Input */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+          placeholder="Ask a question about your FPL team..."
+          className="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+        />
+        <button
+          onClick={handleSend}
+          disabled={loading || !input.trim()}
+          className="px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          <Send className="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+  );
 }

@@ -1,12 +1,14 @@
 import React from 'react'
 import { Grid2x2, Eye, Settings2 } from 'lucide-react'
-import { Link, useLocation } from 'react-router-dom'
+// Old component - using Next.js Link instead
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 const Item = ({to, icon:Icon}:{to:string; icon: any})=>{
-  const { pathname } = useLocation()
+  const pathname = usePathname()
   const active = pathname.startsWith(to)
   return (
-    <Link to={to} className={`flex items-center justify-center h-12 w-12 rounded-xl
+    <Link href={to} className={`flex items-center justify-center h-12 w-12 rounded-xl
        ${active ? 'bg-accent/20 text-accent' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}>
       <Icon size={18}/>
     </Link>
