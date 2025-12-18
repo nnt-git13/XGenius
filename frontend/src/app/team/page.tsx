@@ -16,6 +16,7 @@ import { EnhancedPitch } from "@/components/team/EnhancedPitch"
 import { EnhancedBenchView } from "@/components/team/EnhancedBenchView"
 import { EnhancedPlayerModal } from "@/components/team/EnhancedPlayerModal"
 import { AICopilotPanel } from "@/components/team/AICopilotPanel"
+import { ParticleBackground } from "@/components/ui/ParticleBackground"
 
 // Detect formation from player positions
 const detectFormation = (players: PlayerDetail[]): Formation => {
@@ -37,30 +38,30 @@ export default function MyTeamPage() {
   const { data: teamData, isLoading, error } = useQuery<TeamEvaluationResponse>({
     queryKey: ["my-team", teamId],
     queryFn: async () => {
-      const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error("Request timeout")), 30000)
-      )
-      
-      try {
-        const result = await Promise.race([
-          api.evaluateTeam({ 
-            season: "2024-25",
-            team_id: teamId || undefined,
-          }),
-          timeoutPromise,
-        ]) as TeamEvaluationResponse
-        
-        return result
-      } catch (err: any) {
-        console.error("Team evaluation error:", err)
-        throw err
-      }
+      return await api.evaluateTeam({ 
+        season: "2024-25",
+        team_id: teamId || undefined,
+      }) as TeamEvaluationResponse
     },
     enabled: !!teamId,
     retry: false,
     refetchOnWindowFocus: false,
     staleTime: 30000,
     gcTime: 0,
+    placeholderData: {
+      total_points: 0,
+      expected_points: 0,
+      squad_value: 0,
+      bank: 100,
+      players: [],
+      captain_id: null,
+      vice_captain_id: null,
+      xg_score: 0,
+      risk_score: 0.5,
+      fixture_difficulty: 3.0,
+    },
+    // Don't treat network errors as errors if we have placeholder data
+    throwOnError: false,
   })
 
   const { startingXI, bench } = useMemo(() => {
@@ -80,6 +81,29 @@ export default function MyTeamPage() {
     if (startingXI.length > 0) return detectFormation(startingXI)
     return FORMATIONS[0]
   }, [startingXI, selectedFormation])
+
+  // Show message if no team ID is configured
+  if (!teamId) {
+    return (
+      <div className="min-h-screen bg-ai-darker relative">
+        <ParticleBackground particleCount={30} />
+        <div className="relative container mx-auto px-4 py-8 max-w-7xl z-10">
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <GlassCard className="max-w-md text-center">
+              <AlertCircle className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-white mb-2">No Team Configured</h2>
+              <p className="text-white/70 mb-4">
+                Please configure your team ID in settings to view your team.
+              </p>
+              <AnimatedButton onClick={() => window.location.href = "/settings"}>
+                Go to Settings
+              </AnimatedButton>
+            </GlassCard>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (isLoading && !teamData) {
     return (
@@ -139,6 +163,29 @@ export default function MyTeamPage() {
       </div>
 
       <div className="relative container mx-auto px-4 py-8 max-w-7xl z-10">
+        {/* Backend Connection Warning */}
+        {error && ((error as any)?.code === 'ERR_NETWORK' || (error as any)?.code === 'ERR_CONNECTION_REFUSED') && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <GlassCard className="border-yellow-500/50 bg-yellow-500/10">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm text-yellow-200 font-medium">
+                    Backend not connected - showing placeholder data
+                  </p>
+                  <p className="text-xs text-yellow-300/70 mt-1">
+                    Start the backend server to see real team data
+                  </p>
+                </div>
+              </div>
+            </GlassCard>
+          </motion.div>
+        )}
+
         {/* Header */}
         <SectionHeader
           title="My Team"

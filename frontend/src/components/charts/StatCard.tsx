@@ -64,18 +64,35 @@ export const StatCard: React.FC<StatCardProps> = ({
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ delay, duration: 0.5, ease: "easeOut" }}
-      whileHover={{ y: -4, scale: 1.02 }}
+      whileHover={{ 
+        y: -4, 
+        scale: 1.02,
+        transition: { duration: 0.3, ease: "easeOut" }
+      }}
+      whileTap={{ scale: 0.98 }}
       className={cn(
-        "glass rounded-2xl p-6 border-2 relative overflow-hidden",
+        "glass rounded-2xl p-6 border-2 relative overflow-hidden transition-smooth cursor-pointer group",
         styles.border,
         glow && styles.glow,
         className
       )}
     >
+      {/* Hover overlay effect */}
+      <div
+        className={cn(
+          "absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300",
+          variant === "default" && "bg-gradient-to-br from-ai-primary/20 to-ai-secondary/10",
+          variant === "success" && "bg-gradient-to-br from-green-500/20 to-emerald-500/10",
+          variant === "warning" && "bg-gradient-to-br from-yellow-500/20 to-amber-500/10",
+          variant === "danger" && "bg-gradient-to-br from-red-500/20 to-rose-500/10",
+          variant === "info" && "bg-gradient-to-br from-ai-secondary/20 to-ai-primary/10"
+        )}
+      />
+      
       {/* Animated background gradient */}
       <div
         className={cn(
-          "absolute inset-0 opacity-10",
+          "absolute inset-0 opacity-10 group-hover:opacity-20 transition-opacity duration-300",
           variant === "default" && "bg-gradient-ai",
           variant === "success" && "bg-gradient-to-br from-green-500 to-emerald-500",
           variant === "warning" && "bg-gradient-to-br from-yellow-500 to-amber-500",

@@ -59,10 +59,10 @@ export const Navbar: React.FC = () => {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "relative px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 group",
+                    "relative px-4 py-2 rounded-lg transition-all duration-300 flex items-center gap-2 group",
                     isActive
                       ? "text-ai-primary font-semibold"
-                      : "text-white/70 hover:text-white hover:bg-ai-light/50"
+                      : "text-white/70 hover:text-white hover:bg-ai-light/50 hover:scale-105"
                   )}
                 >
                   {isActive && (

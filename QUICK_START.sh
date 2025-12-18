@@ -7,10 +7,20 @@ echo "🚀 XGenius Quick Start"
 echo "======================"
 echo ""
 
-# Check if Docker is available
+# Check if Docker is available and accessible
 if command -v docker >/dev/null 2>&1 && command -v docker-compose >/dev/null 2>&1; then
-    echo "✅ Docker detected"
-    USE_DOCKER=true
+    # Test if we can actually use Docker (check permissions)
+    if docker info >/dev/null 2>&1; then
+        echo "✅ Docker detected and accessible"
+        USE_DOCKER=true
+    else
+        echo "⚠️  Docker detected but permission denied"
+        echo "   💡 To fix: sudo usermod -aG docker $USER (then log out/in)"
+        echo "   💡 Or run with: sudo ./QUICK_START.sh"
+        echo ""
+        echo "   Using local setup instead..."
+        USE_DOCKER=false
+    fi
 else
     echo "⚠️  Docker not found, will use local setup"
     USE_DOCKER=false

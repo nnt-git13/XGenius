@@ -33,6 +33,8 @@ export default function DashboardPage() {
       captain_id: null,
       vice_captain_id: null,
     },
+    // Don't treat network errors as errors if we have placeholder data
+    throwOnError: false,
   })
 
   const displayStats = stats
@@ -79,7 +81,8 @@ export default function DashboardPage() {
     { gameweek: 12, difficulty: 3, opponent: "LIV", isHome: true },
   ]
 
-  if (isLoading) {
+  // Show loading only if we don't have placeholder data
+  if (isLoading && !stats) {
     return (
       <div className="min-h-screen bg-ai-darker flex items-center justify-center">
         <Loading size="lg" text="Loading dashboard..." />
@@ -87,15 +90,32 @@ export default function DashboardPage() {
     )
   }
 
-  if (error) {
+  // Only show error if it's not a network error (we have placeholder data for that)
+  if (error && !stats) {
+    const isNetworkError = 
+      error instanceof Error && (
+        error.message?.includes('Network') ||
+        error.message?.includes('Failed to fetch') ||
+        error.message?.includes('Connection refused')
+      )
+    
     return (
       <div className="min-h-screen bg-ai-darker flex items-center justify-center px-4">
         <GlassCard className="max-w-md text-center">
-          <AlertTriangle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-2">Error Loading Dashboard</h2>
+          <AlertTriangle className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">
+            {isNetworkError ? "Backend Not Connected" : "Error Loading Dashboard"}
+          </h2>
           <p className="text-white/70 mb-4">
-            {error instanceof Error ? error.message : "An error occurred"}
+            {isNetworkError 
+              ? "Unable to connect to the backend server. Please ensure the backend is running on http://localhost:8000"
+              : error instanceof Error ? error.message : "An error occurred"}
           </p>
+          {isNetworkError && (
+            <p className="text-sm text-white/50 mb-4">
+              The dashboard is showing placeholder data. Start the backend to see real data.
+            </p>
+          )}
         </GlassCard>
       </div>
     )
@@ -120,6 +140,29 @@ export default function DashboardPage() {
       </div>
 
       <div className="relative z-10 container mx-auto px-4 py-8 max-w-7xl">
+        {/* Backend Connection Warning */}
+        {error && (error as any)?.code === 'ERR_NETWORK' && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <GlassCard className="border-yellow-500/50 bg-yellow-500/10">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-yellow-400 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm text-yellow-200 font-medium">
+                    Backend not connected - showing placeholder data
+                  </p>
+                  <p className="text-xs text-yellow-300/70 mt-1">
+                    Start the backend server to see real dashboard data
+                  </p>
+                </div>
+              </div>
+            </GlassCard>
+          </motion.div>
+        )}
+
         {/* Header */}
         <SectionHeader
           title="Dashboard"

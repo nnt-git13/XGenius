@@ -1,8 +1,8 @@
 "use client"
 
 import React, { useState, useRef, useEffect } from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { Send, Bot, User, Loader2, Sparkles, MessageSquare } from "lucide-react"
+import { motion } from "framer-motion"
+import { Send, Bot, User, Loader2 } from "lucide-react"
 import { useMutation } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { GlassCard } from "@/components/ui/GlassCard"
@@ -60,6 +60,13 @@ export default function CopilotPage() {
     },
     onError: (error) => {
       console.error("Copilot error:", error)
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: "assistant",
+        content: "Sorry, I'm having trouble connecting. Please check that the backend is running and try again.",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, errorMessage])
     },
   })
 
@@ -116,9 +123,9 @@ export default function CopilotPage() {
         />
 
         {/* Chat Container */}
-        <GlassCard glow className="flex-1 flex flex-col min-h-0 mb-4">
+        <GlassCard glow className="flex-1 flex flex-col min-h-0 mb-6">
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div className="flex-1 overflow-y-auto p-6 space-y-4 pb-24">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center py-12">
                 <motion.div
@@ -176,7 +183,7 @@ export default function CopilotPage() {
                       )}
                     >
                       <div className="prose prose-invert max-w-none break-words overflow-wrap-anywhere">
-                        <ReactMarkdown className="break-words">{message.content}</ReactMarkdown>
+                        <ReactMarkdown>{message.content}</ReactMarkdown>
                       </div>
                       {message.reasoning && (
                         <div className="mt-3 pt-3 border-t border-white/10">
@@ -227,8 +234,11 @@ export default function CopilotPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Area */}
-          <div className="p-4 border-t border-ai-primary/20">
+        </GlassCard>
+
+        {/* Input Area - Moved outside and lower */}
+        <div className="mt-4">
+          <GlassCard glow className="p-4">
             <div className="flex gap-3">
               <textarea
                 ref={inputRef}
@@ -253,8 +263,8 @@ export default function CopilotPage() {
                 )}
               </AnimatedButton>
             </div>
-          </div>
-        </GlassCard>
+          </GlassCard>
+        </div>
       </div>
     </div>
   )

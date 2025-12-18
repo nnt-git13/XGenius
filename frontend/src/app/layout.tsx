@@ -3,6 +3,8 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Navbar } from "@/components/layout/Navbar";
+import { AppWrapper } from "@/components/layout/AppWrapper";
+import { CopilotFloatingWrapper } from "@/components/copilot/CopilotFloatingWrapper";
 
 const inter = Inter({ 
   subsets: ["latin"],
@@ -22,10 +24,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={inter.className}>
+      <body className={`${inter.className} bg-ai-darker`} style={{ backgroundColor: '#0a0a0a' }}>
         <Providers>
-          <Navbar />
-          {children}
+          <AppWrapper>
+            <Navbar />
+            {children}
+            <CopilotFloatingWrapper />
+          </AppWrapper>
         </Providers>
       </body>
     </html>

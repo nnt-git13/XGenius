@@ -43,6 +43,38 @@ def ingest_players(season: str, csv: str):
 
 
 @cli.command()
+@click.option("--season", default="2024-25", help="Season identifier (e.g., 2024-25)")
+def ingest_fpl(season: str):
+    """Ingest all data from FPL bootstrap-static API."""
+    import asyncio
+    from app.services.fpl_ingestion import FPLIngestionService
+    
+    async def run_ingestion():
+        db_gen = get_db()
+        db = next(db_gen)
+        service = FPLIngestionService(db)
+        try:
+            click.echo(f"Starting FPL data ingestion for season {season}...")
+            click.echo("Fetching data from https://fantasy.premierleague.com/api/bootstrap-static/...")
+            counts = await service.ingest_bootstrap_static(season=season)
+            click.echo(f"\n✅ Ingestion complete!")
+            click.echo(f"   Teams: {counts['teams']} new")
+            click.echo(f"   Players: {counts['players']} new")
+            click.echo(f"   Gameweeks: {counts['gameweeks']} found")
+            click.echo(f"   Fixtures: {counts['fixtures']} new")
+        except Exception as e:
+            click.echo(f"❌ Error during ingestion: {e}", err=True)
+            import traceback
+            traceback.print_exc()
+            raise
+        finally:
+            await service.close()
+            db.close()
+    
+    asyncio.run(run_ingestion())
+
+
+@cli.command()
 @click.option("--season", required=True, help="Season identifier")
 @click.option("--gw", type=int, help="Specific gameweek (optional)")
 @click.option("--csv", type=click.Path(exists=True), help="CSV file path")

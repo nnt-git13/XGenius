@@ -50,7 +50,9 @@ def init_db() -> None:
     # Import all models to ensure they're registered
     from ..models import (
         Player, WeeklyScore, ScoreObject, HypeScore, MLPrediction,
-        Squad, SquadOptimization, Team, Fixture
+        Squad, SquadOptimization, Team, Fixture,
+        CopilotConversation, CopilotMessage, CopilotAction,
+        CopilotAuditLog, CopilotPreference, CopilotMetric
     )
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables initialized")

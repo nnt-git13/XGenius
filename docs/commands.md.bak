@@ -1,0 +1,2 @@
+# Run ingestion
+cd backend && DATABASE_URL="sqlite:///./app/instance/xgenius.db" python -m app.cli.main ingest-fpl --season 2024-25

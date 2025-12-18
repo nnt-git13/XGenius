@@ -86,16 +86,19 @@ export default function OptimizePage() {
                     return (
                       <motion.button
                         key={option.value}
-                        whileHover={{ scale: 1.02 }}
+                        whileHover={{ scale: 1.02, y: -2 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => setOptimizationType(option.value as any)}
                         className={cn(
-                          "w-full p-4 rounded-lg border-2 transition-all text-left",
+                          "w-full p-4 rounded-lg border-2 transition-all text-left relative overflow-hidden group",
                           optimizationType === option.value
                             ? "border-ai-primary bg-ai-primary/10"
                             : "border-ai-primary/20 glass hover:border-ai-primary/40"
                         )}
                       >
+                        {/* Hover overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-ai-primary/0 to-ai-secondary/0 group-hover:from-ai-primary/10 group-hover:to-ai-secondary/5 rounded-lg transition-all duration-300 pointer-events-none" />
+                        <div className="relative z-10">
                         <div className="flex items-center gap-3">
                           <Icon className={cn(
                             "h-5 w-5",
@@ -107,6 +110,7 @@ export default function OptimizePage() {
                           )}>
                             {option.label}
                           </span>
+                        </div>
                         </div>
                       </motion.button>
                     )

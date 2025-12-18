@@ -7,6 +7,17 @@ from .player import Player, WeeklyScore
 from .scoring import ScoreObject, HypeScore, MLPrediction
 from .squad import Squad, SquadOptimization
 from .fixture import Fixture, Team
+from .copilot import (
+    CopilotConversation,
+    CopilotMessage,
+    CopilotAction,
+    CopilotAuditLog,
+    CopilotPreference,
+    CopilotMetric,
+    MessageRole,
+    ActionStatus,
+    ActionRisk,
+)
 
 __all__ = [
     "Player",
@@ -18,5 +29,14 @@ __all__ = [
     "SquadOptimization",
     "Fixture",
     "Team",
+    "CopilotConversation",
+    "CopilotMessage",
+    "CopilotAction",
+    "CopilotAuditLog",
+    "CopilotPreference",
+    "CopilotMetric",
+    "MessageRole",
+    "ActionStatus",
+    "ActionRisk",
 ]
 

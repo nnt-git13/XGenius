@@ -12,37 +12,42 @@ const client = axios.create({
   timeout: 60000, // 60 second timeout (optimization can take longer)
 });
 
-// Add request interceptor for debugging
-client.interceptors.request.use(
-  (config) => {
-    console.log("API Request:", config.method?.toUpperCase(), config.url);
-    return config;
-  },
-  (error) => {
-    console.error("API Request Error:", error);
-    return Promise.reject(error);
-  }
-);
-
-// Add response interceptor for debugging
-client.interceptors.response.use(
-  (response) => {
-    console.log("API Response:", response.status, response.config.url);
-    return response;
-  },
-  (error) => {
-    console.error("API Response Error:", error.message, error.response?.status, error.config?.url);
-    // Extract error message from response if available
-    if (error.response?.data?.detail) {
-      error.message = error.response.data.detail;
-    } else if (error.response?.data?.message) {
-      error.message = error.response.data.message;
-    } else if (error.response?.statusText) {
-      error.message = `${error.response.status}: ${error.response.statusText}`;
+// Add request interceptor for debugging (only in dev)
+if (process.env.NODE_ENV === 'development') {
+  client.interceptors.request.use(
+    (config) => {
+      console.log("API Request:", config.method?.toUpperCase(), config.url);
+      return config;
+    },
+    (error) => {
+      console.error("API Request Error:", error);
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
-  }
-);
+  );
+
+  // Add response interceptor for debugging
+  client.interceptors.response.use(
+    (response) => {
+      console.log("API Response:", response.status, response.config.url);
+      return response;
+    },
+    (error) => {
+      // Only log non-network errors in detail
+      if (error.code !== 'ERR_NETWORK' && error.code !== 'ERR_CONNECTION_REFUSED') {
+        console.error("API Response Error:", error.message, error.response?.status, error.config?.url);
+      }
+      // Extract error message from response if available
+      if (error.response?.data?.detail) {
+        error.message = error.response.data.detail;
+      } else if (error.response?.data?.message) {
+        error.message = error.response.data.message;
+      } else if (error.response?.statusText) {
+        error.message = `${error.response.status}: ${error.response.statusText}`;
+      }
+      return Promise.reject(error);
+    }
+  );
+}
 
 export const api = {
   // Dashboard
@@ -56,9 +61,17 @@ export const api = {
       return response.data;
     } catch (error: any) {
       console.error("API Error:", error);
-      // Return default data on error instead of throwing
-      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-        console.warn("API timeout - returning default stats");
+      // Return default data on network errors instead of throwing
+      const isNetworkError = 
+        error.code === 'ECONNABORTED' || 
+        error.code === 'ERR_NETWORK' ||
+        error.code === 'ERR_CONNECTION_REFUSED' ||
+        error.message?.includes('timeout') ||
+        error.message?.includes('Network Error') ||
+        error.message?.includes('Failed to fetch');
+      
+      if (isNetworkError) {
+        // Silently return default data for network errors
         return {
           season: "2024-25",
           gameweek: null,
@@ -89,16 +102,46 @@ export const api = {
       const response = await client.post("/team/evaluate", data, {
         timeout: 30000,
       });
-      console.log("Team evaluation response:", response.status, response.data);
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Team evaluation response:", response.status, response.data);
+      }
       return response.data;
     } catch (error: any) {
-      console.error("Team evaluation error details:", {
-        message: error.message,
-        code: error.code,
-        response: error.response?.data,
-        status: error.response?.status,
-        config: error.config?.url,
-      });
+      // Check if it's a network error
+      const isNetworkError = 
+        error.code === 'ECONNABORTED' || 
+        error.code === 'ERR_NETWORK' ||
+        error.code === 'ERR_CONNECTION_REFUSED' ||
+        error.message?.includes('timeout') ||
+        error.message?.includes('Network Error') ||
+        error.message?.includes('Failed to fetch');
+      
+      if (isNetworkError) {
+        // Return placeholder data for network errors
+        return {
+          total_points: 0,
+          expected_points: 0,
+          squad_value: 0,
+          bank: 100,
+          players: [],
+          captain_id: null,
+          vice_captain_id: null,
+          xg_score: 0,
+          risk_score: 0.5,
+          fixture_difficulty: 3.0,
+        };
+      }
+      
+      // Only log non-network errors
+      if (process.env.NODE_ENV === 'development') {
+        console.error("Team evaluation error details:", {
+          message: error.message,
+          code: error.code,
+          response: error.response?.data,
+          status: error.response?.status,
+          config: error.config?.url,
+        });
+      }
       throw error;
     }
   },

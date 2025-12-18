@@ -36,13 +36,23 @@ export const AnimatedButton: React.FC<AnimatedButtonProps> = ({
 
   return (
     <motion.button
-      whileHover={magnetic ? { scale: 1.05, y: -2 } : { scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
+      whileHover={magnetic ? { 
+        scale: 1.05, 
+        y: -2,
+        transition: { duration: 0.2, ease: "easeOut" }
+      } : { 
+        scale: 1.02,
+        transition: { duration: 0.2, ease: "easeOut" }
+      }}
+      whileTap={{ 
+        scale: 0.98,
+        transition: { duration: 0.1 }
+      }}
       className={cn(
-        "rounded-lg font-medium transition-all duration-200 relative break-words overflow-wrap-anywhere whitespace-normal",
+        "rounded-lg font-medium transition-all duration-300 relative break-words overflow-wrap-anywhere whitespace-normal",
         variants[variant],
         sizes[size],
-        glow && "shadow-glow",
+        glow && "shadow-glow hover:shadow-[0_0_30px_rgba(0,255,133,0.5)]",
         className
       )}
       style={

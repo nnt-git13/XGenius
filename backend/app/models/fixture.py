@@ -13,7 +13,8 @@ class Team(Base):
     __tablename__ = "teams"
     
     id = Column(Integer, primary_key=True, index=True)
-    fpl_code = Column(Integer, unique=True, index=True, nullable=True)
+    fpl_id = Column(Integer, unique=True, index=True, nullable=True)  # FPL API team ID
+    fpl_code = Column(Integer, unique=True, index=True, nullable=True)  # FPL team code
     name = Column(String(80), nullable=False, unique=True, index=True)
     short_name = Column(String(10), nullable=True)  # e.g., "ARS", "MCI"
     
@@ -59,7 +60,8 @@ class Fixture(Base):
     __tablename__ = "fixtures"
     
     id = Column(Integer, primary_key=True, index=True)
-    fpl_code = Column(Integer, unique=True, index=True, nullable=True)
+    fpl_id = Column(Integer, unique=True, index=True, nullable=True)  # FPL API fixture ID
+    fpl_code = Column(Integer, unique=True, index=True, nullable=True)  # Legacy field
     season = Column(String(16), nullable=False, index=True)  # e.g., "2024-25"
     gw = Column(Integer, nullable=False, index=True)  # Gameweek
     team_h_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)

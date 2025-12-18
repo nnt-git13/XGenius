@@ -1,45 +1,97 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useMemo } from "react"
 import { motion } from "framer-motion"
-import { Search, Filter, TrendingUp, TrendingDown, Star, ArrowUpDown } from "lucide-react"
+import { Search, Filter, TrendingUp, TrendingDown, Star, ArrowUpDown, Loader2 } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { AnimatedButton } from "@/components/ui/AnimatedButton"
 import { SectionHeader } from "@/components/ui/SectionHeader"
 import { Input } from "@/components/ui/Input"
+import { api, listPlayers } from "@/lib/api"
+import { Loading } from "@/components/ui/Loading"
 import { cn } from "@/lib/utils"
 
-// Mock player data
+// Mock data for testing components (fallback only)
 const mockPlayers = [
-  { id: 1, name: "Erling Haaland", position: "FWD", team: "MCI", price: 140, predicted: 8.5, form: 7.2, risk: 0.2 },
-  { id: 2, name: "Mohamed Salah", position: "MID", team: "LIV", price: 135, predicted: 8.2, form: 8.0, risk: 0.15 },
-  { id: 3, name: "Bukayo Saka", position: "MID", team: "ARS", price: 95, predicted: 7.8, form: 7.5, risk: 0.25 },
-  { id: 4, name: "Ollie Watkins", position: "FWD", team: "AVL", price: 85, predicted: 7.5, form: 8.2, risk: 0.3 },
-  { id: 5, name: "Alexander Isak", position: "FWD", team: "NEW", price: 75, predicted: 7.2, form: 6.8, risk: 0.35 },
+  { id: 1, name: "Erling Haaland", position: "FWD", team_short_name: "MCI", price: 14.0, total_points: 85, assists: 2 },
+  { id: 2, name: "Mohamed Salah", position: "MID", team_short_name: "LIV", price: 13.5, total_points: 82, assists: 5 },
 ]
+
+interface Player {
+  id: number
+  name: string
+  position: string
+  team_short_name?: string
+  team_name?: string
+  price: number
+  total_points: number
+  goals_scored: number
+  assists: number
+  clean_sheets: number
+  status: string
+}
 
 export default function TransfersPage() {
   const [search, setSearch] = useState("")
   const [positionFilter, setPositionFilter] = useState<string | null>(null)
-  const [sortBy, setSortBy] = useState<"predicted" | "price" | "form">("predicted")
+  const [sortBy, setSortBy] = useState<"points" | "price" | "goals">("points")
   const [selectedPlayers, setSelectedPlayers] = useState<number[]>([])
 
-  const filteredPlayers = mockPlayers
-    .filter((p) => {
-      if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false
-      if (positionFilter && p.position !== positionFilter) return false
-      return true
-    })
-    .sort((a, b) => {
-      if (sortBy === "predicted") return b.predicted - a.predicted
-      if (sortBy === "price") return b.price - a.price
-      return b.form - a.form
-    })
+  // Fetch real players from database
+  const { data: playersData, isLoading, error } = useQuery({
+    queryKey: ["players", positionFilter, search],
+    queryFn: async () => {
+      try {
+        const result = await listPlayers(positionFilter || "", {
+          limit: 500, // Get more players
+          search: search || undefined,
+        })
+        return result.players as Player[]
+      } catch (err) {
+        console.error("Error fetching players:", err)
+        // Return mock data only if API fails
+        return mockPlayers as Player[]
+      }
+    },
+    staleTime: 30000,
+    placeholderData: [],
+  })
+
+  const players = playersData || []
+
+  const filteredPlayers = useMemo(() => {
+    return players
+      .filter((p) => {
+        if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false
+        if (positionFilter && p.position !== positionFilter) return false
+        return true
+      })
+      .sort((a, b) => {
+        if (sortBy === "points") return b.total_points - a.total_points
+        if (sortBy === "price") return b.price - a.price
+        if (sortBy === "goals") return b.goals_scored - a.goals_scored
+        return 0
+      })
+      .slice(0, 100) // Limit to 100 for performance
+  }, [players, search, positionFilter, sortBy])
 
   const togglePlayer = (id: number) => {
     setSelectedPlayers((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
     )
+  }
+
+  // Calculate form (points per game approximation)
+  const getForm = (player: Player) => {
+    // Approximate form based on total points (simplified)
+    return Math.min(10, (player.total_points / 10) || 0)
+  }
+
+  // Calculate risk (inverse of form, simplified)
+  const getRisk = (player: Player) => {
+    const form = getForm(player)
+    return Math.max(0, Math.min(1, (10 - form) / 10))
   }
 
   return (
@@ -85,7 +137,7 @@ export default function TransfersPage() {
             <select
               value={positionFilter || ""}
               onChange={(e) => setPositionFilter(e.target.value || null)}
-              className="glass rounded-lg px-4 py-2 text-white border border-ai-primary/20 focus:outline-none focus:ring-2 focus:ring-ai-primary"
+              className="glass rounded-lg px-4 py-2 text-white border border-ai-primary/20 focus:outline-none focus:ring-2 focus:ring-ai-primary bg-ai-light/90 backdrop-blur-sm"
             >
               <option value="">All Positions</option>
               <option value="GK">Goalkeeper</option>
@@ -96,60 +148,106 @@ export default function TransfersPage() {
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="glass rounded-lg px-4 py-2 text-white border border-ai-primary/20 focus:outline-none focus:ring-2 focus:ring-ai-primary"
+              className="glass rounded-lg px-4 py-2 text-white border border-ai-primary/20 focus:outline-none focus:ring-2 focus:ring-ai-primary bg-ai-light/90 backdrop-blur-sm"
             >
-              <option value="predicted">Sort by Predicted</option>
+              <option value="points">Sort by Points</option>
               <option value="price">Sort by Price</option>
-              <option value="form">Sort by Form</option>
+              <option value="goals">Sort by Goals</option>
             </select>
           </div>
         </GlassCard>
 
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Loading size="lg" text="Loading players..." />
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && !players.length && (
+          <GlassCard className="text-center py-8">
+            <p className="text-white/70">Failed to load players. Showing limited data.</p>
+          </GlassCard>
+        )}
+
+        {/* Player Count */}
+        {!isLoading && (
+          <div className="mb-4 text-white/70 text-sm">
+            Showing {filteredPlayers.length} of {players.length} players
+          </div>
+        )}
+
         {/* Player Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredPlayers.map((player, index) => (
-            <motion.div
-              key={player.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-            >
-              <GlassCard
-                glow
-                hover
-                onClick={() => togglePlayer(player.id)}
-                className={cn(
-                  "cursor-pointer transition-all",
-                  selectedPlayers.includes(player.id) && "ring-2 ring-ai-primary"
-                )}
+        {!isLoading && filteredPlayers.length > 0 && (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredPlayers.map((player, index) => (
+              <motion.div
+                key={player.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(index * 0.05, 0.5) }}
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-white">{player.name}</h3>
-                    <p className="text-sm text-white/60">{player.position} • {player.team}</p>
+                <GlassCard
+                  glow
+                  hover
+                  onClick={() => togglePlayer(player.id)}
+                  className={cn(
+                    "cursor-pointer transition-all relative group",
+                    selectedPlayers.includes(player.id) && "ring-2 ring-ai-primary ring-offset-2 ring-offset-ai-darker"
+                  )}
+                >
+                  {/* Hover overlay effect */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-ai-primary/0 to-ai-primary/0 group-hover:from-ai-primary/10 group-hover:to-ai-secondary/5 rounded-2xl transition-all duration-300 pointer-events-none" />
+                  
+                  <div className="relative z-10">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-white group-hover:text-ai-primary transition-colors">
+                          {player.name}
+                        </h3>
+                        <p className="text-sm text-white/60">
+                          {player.position} • {player.team_short_name || player.team_name || "N/A"}
+                        </p>
+                      </div>
+                      <div className="px-2 py-1 rounded bg-ai-primary/20 text-ai-primary text-sm font-semibold group-hover:bg-ai-primary/30 transition-colors">
+                        £{player.price.toFixed(1)}M
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <p className="text-xs text-white/60 mb-1">Points</p>
+                        <p className="text-lg font-bold text-white">{player.total_points}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-white/60 mb-1">Goals</p>
+                        <p className="text-lg font-bold text-white">{player.goals_scored}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-white/60 mb-1">Assists</p>
+                        <p className="text-lg font-bold text-white">{player.assists}</p>
+                      </div>
+                    </div>
+                    {player.status !== "a" && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <p className="text-xs text-yellow-400">
+                          Status: {player.status === "i" ? "Injured" : player.status === "s" ? "Suspended" : "Unavailable"}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <div className="px-2 py-1 rounded bg-ai-primary/20 text-ai-primary text-sm font-semibold">
-                    £{player.price / 10}M
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <p className="text-xs text-white/60 mb-1">Predicted</p>
-                    <p className="text-lg font-bold text-white">{player.predicted}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-white/60 mb-1">Form</p>
-                    <p className="text-lg font-bold text-white">{player.form}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-white/60 mb-1">Risk</p>
-                    <p className="text-lg font-bold text-white">{player.risk}</p>
-                  </div>
-                </div>
-              </GlassCard>
-            </motion.div>
-          ))}
-        </div>
+                </GlassCard>
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!isLoading && filteredPlayers.length === 0 && (
+          <GlassCard className="text-center py-12">
+            <p className="text-white/70">No players found matching your criteria.</p>
+          </GlassCard>
+        )}
       </div>
     </div>
   )
