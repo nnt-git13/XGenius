@@ -14,6 +14,44 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+def _pos_from_element_type(element_type: int) -> str:
+    return {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}.get(element_type, "MID")
+
+def _latest_gw_from_bootstrap(bootstrap_data: Dict[str, Any]) -> int:
+    """
+    Resolve the most appropriate "latest" gameweek from FPL bootstrap-static payload.
+
+    FPL bootstrap-static exposes `events` (list) with fields like:
+      - id
+      - is_current
+      - is_next
+      - finished
+
+    Strategy:
+      - If there is a current GW, use it.
+      - Else if there are finished GWs, use the max finished id.
+      - Else if there is a next GW, use max(1, next_id - 1).
+      - Else fallback to 1.
+    """
+    events = bootstrap_data.get("events") or []
+    try:
+        current = next((e.get("id") for e in events if e.get("is_current")), None)
+        if isinstance(current, int) and current > 0:
+            return current
+
+        finished_ids = [e.get("id") for e in events if e.get("finished") and isinstance(e.get("id"), int)]
+        if finished_ids:
+            return max(finished_ids)
+
+        next_id = next((e.get("id") for e in events if e.get("is_next")), None)
+        if isinstance(next_id, int) and next_id > 1:
+            return next_id - 1
+    except Exception:
+        # Defensive: never crash evaluation because bootstrap parsing is off
+        pass
+
+    return 1
+
 
 class TeamEvaluator:
     """Evaluates FPL teams."""
@@ -52,19 +90,8 @@ class TeamEvaluator:
                     # Get the latest gameweek from bootstrap-static
                     bootstrap_response = requests.get(f"{settings.FPL_API_BASE_URL}/bootstrap-static/", timeout=10)
                     bootstrap_data = bootstrap_response.json()
-                    current_event = bootstrap_data.get("current_event", 1)
-                    next_event = bootstrap_data.get("next_event")
-                    
-                    # If current_event is the same as next_event, it means the current gameweek hasn't started yet
-                    # In that case, we want to use the previous gameweek (current_event - 1)
-                    if next_event and next_event == current_event:
-                        # Current event is actually the next event (hasn't started), use previous
-                        gameweek = max(1, current_event - 1)
-                        logger.info(f"Current event {current_event} is the next event (not started), using previous gameweek: {gameweek}")
-                    else:
-                        # Current event is the active gameweek, use it
-                        gameweek = current_event
-                        logger.info(f"Using current active gameweek: {gameweek} (next_event: {next_event})")
+                    gameweek = _latest_gw_from_bootstrap(bootstrap_data)
+                    logger.info(f"Resolved latest gameweek from bootstrap-static: {gameweek}")
                 
                 # Fetch team picks - always try current gameweek first, only fallback if it truly has no picks
                 picks_response = None
@@ -87,8 +114,8 @@ class TeamEvaluator:
                     else:
                         # Current gameweek has no picks - might be set for next gameweek
                         # Check if there's a next_event that's different
-                        next_event = bootstrap_data.get("next_event", None)
-                        if next_event and next_event == gameweek:
+                        next_event = next((e.get("id") for e in (bootstrap_data.get("events") or []) if e.get("is_next")), None)
+                        if isinstance(next_event, int) and next_event == gameweek:
                             # Current gameweek is the "next" event (hasn't started), try previous
                             logger.info(f"Current gameweek {gameweek} is the next event (not started), trying previous gameweek {gameweek - 1}")
                             if gameweek > 1:
@@ -132,6 +159,118 @@ class TeamEvaluator:
                     picks_by_element = {pick.get("element"): pick for pick in picks if pick.get("element")}
                     fpl_codes = [pick.get("element") for pick in picks if pick.get("element")]
                     logger.info(f"Found {len(fpl_codes)} FPL element IDs in picks")
+
+                    # Build a response directly from FPL bootstrap-static for accuracy (GW points, multipliers, order)
+                    # This avoids mismatches when the local DB is missing/behind on WeeklyScore/player mappings.
+                    try:
+                        if "bootstrap_data" not in locals():
+                            bootstrap_response = requests.get(f"{settings.FPL_API_BASE_URL}/bootstrap-static/", timeout=10)
+                            bootstrap_data = bootstrap_response.json()
+
+                        elements_by_id = {e.get("id"): e for e in (bootstrap_data.get("elements") or []) if e.get("id")}
+                        teams_by_id = {t.get("id"): t for t in (bootstrap_data.get("teams") or []) if t.get("id")}
+
+                        entry_history = picks_data.get("entry_history") or {}
+                        active_chip = picks_data.get("active_chip") or entry_history.get("active_chip")
+
+                        # Sort picks into FPL UI order: 1-11 starting XI, 12-15 bench
+                        picks_sorted = sorted(picks, key=lambda p: p.get("position", 99))
+
+                        players_data: List[PlayerDetail] = []
+                        captain_id: Optional[int] = None
+                        vice_captain_id: Optional[int] = None
+                        expected_points_total = 0.0
+
+                        for pick in picks_sorted:
+                            element_id = pick.get("element")
+                            if not element_id:
+                                continue
+
+                            el = elements_by_id.get(element_id)
+                            if not el:
+                                continue
+
+                            team_id_fpl = el.get("team")
+                            team_info = teams_by_id.get(team_id_fpl, {}) if team_id_fpl else {}
+
+                            element_type = int(el.get("element_type") or 3)
+                            position = _pos_from_element_type(element_type)
+                            price = float(el.get("now_cost") or 0) / 10.0
+
+                            multiplier = int(pick.get("multiplier") or 1)
+                            is_captain = bool(pick.get("is_captain"))
+                            is_vice_captain = bool(pick.get("is_vice_captain"))
+                            is_starting = (pick.get("position") or 99) <= 11
+
+                            gw_points_raw = float(el.get("event_points") or 0)
+                            gw_points = gw_points_raw * multiplier
+
+                            # Expected points (projected) from bootstrap ep_this; multiply for captain/triple.
+                            ep_this = el.get("ep_this")
+                            try:
+                                ep_this_f = float(ep_this) if ep_this is not None else 0.0
+                            except Exception:
+                                ep_this_f = 0.0
+                            if is_starting:
+                                expected_points_total += ep_this_f * multiplier
+
+                            if is_captain:
+                                captain_id = element_id
+                            if is_vice_captain:
+                                vice_captain_id = element_id
+
+                            players_data.append(PlayerDetail(
+                                id=int(element_id),  # Use FPL element id as stable identifier for UI selection
+                                fpl_code=int(element_id),
+                                name=str(el.get("web_name") or f"{el.get('first_name','')} {el.get('second_name','')}".strip()),
+                                position=position,
+                                team=str(team_info.get("name") or "Unknown"),
+                                team_short_name=str(team_info.get("short_name") or None),
+                                team_fpl_code=int(team_id_fpl) if team_id_fpl else None,
+                                price=price,
+                                status=str(el.get("status") or "a"),
+                                is_starting=is_starting,
+                                is_captain=is_captain,
+                                is_vice_captain=is_vice_captain,
+                                multiplier=multiplier,
+                                gw_points_raw=gw_points_raw,
+                                gw_points=gw_points,
+                                total_points=float(el.get("total_points") or 0.0),  # season points from FPL
+                                goals_scored=int(el.get("goals_scored") or 0),
+                                assists=int(el.get("assists") or 0),
+                                clean_sheets=int(el.get("clean_sheets") or 0),
+                            ))
+
+                        # Team-level points/value/rank from entry_history (authoritative)
+                        gw_points_total = float(entry_history.get("points") or 0.0)
+                        overall_points = entry_history.get("total_points")
+                        gw_rank = entry_history.get("rank")
+                        transfers = entry_history.get("event_transfers")
+                        squad_value = float(entry_history.get("value") or 0) / 10.0
+                        bank = float(entry_history.get("bank") or 0) / 10.0
+
+                        risk_score = self._calculate_risk_score(players_data)
+                        fixture_difficulty = 3.0
+
+                        return TeamEvaluationResponse(
+                            season=season,
+                            gameweek=gameweek,
+                            overall_points=float(overall_points) if overall_points is not None else None,
+                            gw_rank=int(gw_rank) if isinstance(gw_rank, int) else None,
+                            transfers=int(transfers) if isinstance(transfers, int) else None,
+                            active_chip=str(active_chip) if active_chip else None,
+                            total_points=gw_points_total,
+                            expected_points=expected_points_total,
+                            risk_score=risk_score,
+                            fixture_difficulty=fixture_difficulty,
+                            squad_value=squad_value,
+                            bank=bank,
+                            players=players_data,
+                            captain_id=captain_id,
+                            vice_captain_id=vice_captain_id,
+                        )
+                    except Exception as e:
+                        logger.warning(f"FPL bootstrap-derived evaluation failed; falling back to DB mapping: {str(e)}", exc_info=True)
                     
                     # Convert FPL codes to internal player IDs by matching fpl_code
                     if fpl_codes:
