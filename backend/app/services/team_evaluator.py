@@ -172,6 +172,10 @@ class TeamEvaluator:
 
                         entry_history = picks_data.get("entry_history") or {}
                         active_chip = picks_data.get("active_chip") or entry_history.get("active_chip")
+                        
+                        # Determine if this is a historical gameweek (not current)
+                        latest_gw = _latest_gw_from_bootstrap(bootstrap_data)
+                        is_historical_gw = gameweek is not None and gameweek != latest_gw
 
                         # Sort picks into FPL UI order: 1-11 starting XI, 12-15 bench
                         picks_sorted = sorted(picks, key=lambda p: p.get("position", 99))
@@ -202,7 +206,33 @@ class TeamEvaluator:
                             is_vice_captain = bool(pick.get("is_vice_captain"))
                             is_starting = (pick.get("position") or 99) <= 11
 
-                            gw_points_raw = float(el.get("event_points") or 0)
+                            # For historical gameweeks, fetch points from element history
+                            # For current/latest gameweek, use event_points from bootstrap-static
+                            gw_points_raw = 0.0
+                            if is_historical_gw and gameweek:
+                                # Historical gameweek - fetch from element summary
+                                try:
+                                    element_summary_url = f"{settings.FPL_API_BASE_URL}/element-summary/{element_id}/"
+                                    element_summary_response = requests.get(element_summary_url, timeout=5)
+                                    if element_summary_response.status_code == 200:
+                                        element_summary = element_summary_response.json()
+                                        history = element_summary.get("history", [])
+                                        # Find points for this specific gameweek
+                                        gw_history = next((h for h in history if h.get("round") == gameweek), None)
+                                        if gw_history:
+                                            gw_points_raw = float(gw_history.get("total_points") or 0)
+                                        else:
+                                            # Fallback: use event_points (will be 0 for past gameweeks)
+                                            gw_points_raw = float(el.get("event_points") or 0)
+                                    else:
+                                        gw_points_raw = float(el.get("event_points") or 0)
+                                except Exception as e:
+                                    logger.warning(f"Failed to fetch element summary for {element_id} GW {gameweek}: {str(e)}")
+                                    gw_points_raw = float(el.get("event_points") or 0)
+                            else:
+                                # Current/latest gameweek - use event_points from bootstrap-static
+                                gw_points_raw = float(el.get("event_points") or 0)
+                            
                             gw_points = gw_points_raw * multiplier
 
                             # Expected points (projected) from bootstrap ep_this; multiply for captain/triple.
