@@ -8,7 +8,7 @@ import { GlassCard } from "@/components/ui/GlassCard"
 import { AnimatedButton } from "@/components/ui/AnimatedButton"
 import { SectionHeader } from "@/components/ui/SectionHeader"
 import { Input } from "@/components/ui/Input"
-import { api, listPlayers } from "@/lib/api"
+import { api, listPlayers, type Player } from "@/lib/api"
 import { Loading } from "@/components/ui/Loading"
 import { cn } from "@/lib/utils"
 
@@ -17,20 +17,6 @@ const mockPlayers = [
   { id: 1, name: "Erling Haaland", position: "FWD", team_short_name: "MCI", price: 14.0, total_points: 85, assists: 2 },
   { id: 2, name: "Mohamed Salah", position: "MID", team_short_name: "LIV", price: 13.5, total_points: 82, assists: 5 },
 ]
-
-interface Player {
-  id: number
-  name: string
-  position: string
-  team_short_name?: string
-  team_name?: string
-  price: number
-  total_points: number
-  goals_scored: number
-  assists: number
-  clean_sheets: number
-  status: string
-}
 
 export default function TransfersPage() {
   const [search, setSearch] = useState("")
@@ -47,11 +33,11 @@ export default function TransfersPage() {
           limit: 500, // Get more players
           search: search || undefined,
         })
-        return result.players as Player[]
+        return result.players
       } catch (err) {
         console.error("Error fetching players:", err)
         // Return mock data only if API fails
-        return mockPlayers as Player[]
+        return mockPlayers as unknown as Player[]
       }
     },
     staleTime: 30000,
@@ -68,9 +54,9 @@ export default function TransfersPage() {
         return true
       })
       .sort((a, b) => {
-        if (sortBy === "points") return b.total_points - a.total_points
-        if (sortBy === "price") return b.price - a.price
-        if (sortBy === "goals") return b.goals_scored - a.goals_scored
+        if (sortBy === "points") return Number((b as any).total_points ?? 0) - Number((a as any).total_points ?? 0)
+        if (sortBy === "price") return Number((b as any).price ?? 0) - Number((a as any).price ?? 0)
+        if (sortBy === "goals") return Number((b as any).goals_scored ?? 0) - Number((a as any).goals_scored ?? 0)
         return 0
       })
       .slice(0, 100) // Limit to 100 for performance

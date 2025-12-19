@@ -100,7 +100,7 @@ export const LoadInScreen: React.FC<LoadInScreenProps> = ({
       <motion.div
         className="absolute inset-0"
         initial={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        exit={{ opacity: 0, scale: 1 }}
         transition={{ duration: 0.6, ease: easings.easeInOut }}
       >
         {/* Main content container */}

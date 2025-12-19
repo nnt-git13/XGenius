@@ -220,6 +220,7 @@ export async function listPlayers(
     limit?: number;
     offset?: number;
     team?: string;
+    search?: string;
   } = {}
 ): Promise<{ players: Player[]; total: number }> {
   const params = new URLSearchParams();
@@ -228,6 +229,7 @@ export async function listPlayers(
   if (options.limit) params.append("limit", String(options.limit));
   if (options.offset) params.append("offset", String(options.offset));
   if (options.team) params.append("team", options.team);
+  if (options.search) params.append("search", options.search);
 
   const response = await client.get(`/players/?${params.toString()}`);
   const players = Array.isArray(response.data) ? response.data : [];

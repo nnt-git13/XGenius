@@ -7,21 +7,40 @@ export interface PlayerDetail {
   name: string
   position: "GK" | "DEF" | "MID" | "FWD"
   team: string
+  team_short_name?: string
   price: number // Price in millions (e.g., 10.5 = £10.5M)
   fpl_code?: number | null
   team_fpl_code?: number | null // FPL team code for shirt images
   status: "a" | "i" | "s" | "u" | "d" // a=available, i=injured, s=suspended, u=unavailable, d=doubtful
+  is_starting?: boolean
+  is_captain?: boolean
+  is_vice_captain?: boolean
+  multiplier?: number
+  gw_points_raw?: number
+  gw_points?: number
   total_points: number
   goals_scored: number
   assists: number
   clean_sheets: number
+  yellow_cards?: number // Yellow cards
+  red_cards?: number // Red cards
+  // Fixture information
+  next_fixture_opponent?: string // Opponent team name
+  next_fixture_opponent_short?: string // Opponent team short code (e.g., "LIV", "MCI")
+  next_fixture_home_away?: "H" | "A" // Home or Away
+  next_fixture_difficulty?: number // 1-5 difficulty rating
 }
 
 export interface TeamEvaluationResponse {
   season: string
   gameweek: number | null
+  overall_points?: number | null
+  gw_rank?: number | null
+  transfers?: number | null
+  active_chip?: string | null
   total_points: number
   expected_points: number
+  xg_score?: number
   risk_score: number
   fixture_difficulty: number
   squad_value: number // Total squad value in millions
