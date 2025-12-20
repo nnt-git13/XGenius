@@ -2,8 +2,8 @@ from __future__ import annotations
 import os
 import pandas as pd
 from flask import Blueprint, request
-from ..db import db
-from ..models import Player, WeeklyScore
+from app.db import db
+from app.legacy.models import Player, WeeklyScore
 
 bp = Blueprint("ingest", __name__)
 

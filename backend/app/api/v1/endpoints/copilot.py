@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
 import logging
 
-from app.core.database import get_db
+from app.db import get_db
 from app.services.copilot_agent import CopilotAgent
 from app.api.v1.schemas.copilot import CopilotChatRequest, CopilotChatResponse
 from app.models.copilot import (

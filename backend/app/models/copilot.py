@@ -8,7 +8,7 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, JSON, F
 from sqlalchemy.orm import relationship
 import enum
 
-from app.core.database import Base
+from app.db import Base
 
 
 class MessageRole(str, enum.Enum):

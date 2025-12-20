@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from pydantic import BaseModel
-from app.core.database import get_db
+from app.db import get_db
 from app.models.player import Player
 from app.models.fixture import Team
 

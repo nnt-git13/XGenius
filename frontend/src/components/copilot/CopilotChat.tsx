@@ -9,6 +9,7 @@ import { ActionCard } from "./ActionCard"
 import { ToolStatusIndicator } from "./ToolStatusIndicator"
 import { cn } from "@/lib/utils"
 import ReactMarkdown from "react-markdown"
+import { useAppStore } from "@/store/useAppStore"
 
 interface Message {
   id: string
@@ -31,6 +32,7 @@ export const CopilotChat: React.FC = () => {
   const [conversationId, setConversationId] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const teamId = useAppStore((state) => state.teamId)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -42,57 +44,15 @@ export const CopilotChat: React.FC = () => {
 
   const sendMessageMutation = useMutation({
     mutationFn: async (message: string) => {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-      
-      // Try new copilot endpoint first, fallback to old assistant endpoint
-      let response
-      try {
-        response = await fetch(`${apiUrl}/api/v1/copilot/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message,
-            conversation_id: conversationId,
-            app_state: {
-              route: window.location.pathname,
-            },
-          }),
-        })
-        
-        if (!response.ok) {
-          throw new Error(`Copilot endpoint failed: ${response.status}`)
-        }
-      } catch (err) {
-        // Fallback to old assistant endpoint
-        console.warn("Copilot endpoint failed, using assistant endpoint:", err)
-        try {
-          response = await fetch(`${apiUrl}/api/v1/assistant/ask`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              question: message,
-            }),
-          })
-          
-          if (!response.ok) {
-            throw new Error(`Assistant endpoint failed: ${response.status}`)
-          }
-          
-          const data = await response.json()
-          // Transform old format to new format
-          return {
-            answer: data.answer || data.response || "I've processed your request.",
-            sources: [],
-            actions: [],
-            conversation_id: conversationId,
-          }
-        } catch (fallbackErr) {
-          console.error("Both endpoints failed:", fallbackErr)
-          throw new Error("Unable to connect to copilot service. Please check your connection.")
-        }
-      }
-      
-      return response.json()
+      const response = await api.askCopilot(message, {
+        conversation_id: conversationId || undefined,
+        team_id: teamId || undefined,
+        route: window.location.pathname,
+        app_state: {
+          route: window.location.pathname,
+        },
+      })
+      return response
     },
     onSuccess: (data) => {
       const assistantMessage: Message = {

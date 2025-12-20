@@ -8,8 +8,8 @@ from pathlib import Path
 # Add backend to path to avoid importing Flask app
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-# Import directly from core to avoid triggering app/__init__.py
-from app.core.database import get_db, init_db, drop_db
+# Import from unified DB package (does not import Flask unless available)
+from app.db import get_db, init_db, drop_db
 from app.core.config import settings
 
 

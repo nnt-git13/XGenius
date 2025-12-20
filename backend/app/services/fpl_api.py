@@ -81,6 +81,85 @@ class FPLAPIService:
         except httpx.HTTPError as e:
             logger.error(f"Error fetching fixtures: {e}")
             raise
+
+    async def fetch_event_live(self, gw_id: int) -> Dict[str, Any]:
+        """
+        Fetch live gameweek data for all elements.
+        Endpoint: /event/{gw_id}/live/
+        """
+        try:
+            response = await self.client.get(f"{FPL_API_BASE}/event/{gw_id}/live/")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching event live GW {gw_id}: {e}")
+            raise
+
+    async def fetch_entry_details(self, entry_id: int) -> Dict[str, Any]:
+        """Endpoint: /entry/{entry_id}/"""
+        try:
+            response = await self.client.get(f"{FPL_API_BASE}/entry/{entry_id}/")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching entry details {entry_id}: {e}")
+            raise
+
+    async def fetch_entry_history(self, entry_id: int) -> Dict[str, Any]:
+        """Endpoint: /entry/{entry_id}/history/"""
+        try:
+            response = await self.client.get(f"{FPL_API_BASE}/entry/{entry_id}/history/")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching entry history {entry_id}: {e}")
+            raise
+
+    async def fetch_entry_transfers(self, entry_id: int) -> List[Dict[str, Any]]:
+        """Endpoint: /entry/{entry_id}/transfers/"""
+        try:
+            response = await self.client.get(f"{FPL_API_BASE}/entry/{entry_id}/transfers/")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching entry transfers {entry_id}: {e}")
+            raise
+
+    async def fetch_entry_picks(self, entry_id: int, gw_id: int) -> Dict[str, Any]:
+        """Endpoint: /entry/{entry_id}/event/{gw_id}/picks/"""
+        try:
+            response = await self.client.get(f"{FPL_API_BASE}/entry/{entry_id}/event/{gw_id}/picks/")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching entry picks {entry_id} GW {gw_id}: {e}")
+            raise
+
+    async def fetch_me(self, cookie: str) -> Dict[str, Any]:
+        """Endpoint: /me/ (requires authentication cookie)."""
+        try:
+            response = await self.client.get(
+                f"{FPL_API_BASE}/me/",
+                headers={"cookie": cookie},
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching /me/: {e}")
+            raise
+
+    async def fetch_my_team(self, team_id: int, cookie: str) -> Dict[str, Any]:
+        """Endpoint: /my-team/{team_id}/ (requires authentication cookie)."""
+        try:
+            response = await self.client.get(
+                f"{FPL_API_BASE}/my-team/{team_id}/",
+                headers={"cookie": cookie},
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Error fetching /my-team/{team_id}: {e}")
+            raise
     
     def parse_position(self, element_type: int) -> str:
         """Convert FPL element_type to position string."""

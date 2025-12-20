@@ -1,7 +1,7 @@
 """Admin endpoints for ingestion and management."""
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
-from app.core.database import get_db
+from app.db import get_db
 from app.services.ingestion import ingest_weekly_scores, ingest_players
 
 router = APIRouter()

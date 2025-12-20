@@ -2,7 +2,7 @@
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from app.core.database import Base
+from app.db import Base
 
 
 class WeeklyScore(Base):

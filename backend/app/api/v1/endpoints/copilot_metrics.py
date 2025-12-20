@@ -8,7 +8,7 @@ from sqlalchemy import func, desc
 from typing import List, Optional
 from datetime import datetime, timedelta
 
-from app.core.database import get_db
+from app.db import get_db
 from app.models.copilot import CopilotMetric, CopilotConversation, CopilotMessage
 
 router = APIRouter()

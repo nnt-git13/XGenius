@@ -18,6 +18,7 @@ from .copilot import (
     ActionStatus,
     ActionRisk,
 )
+from .fpl_snapshot import FPLApiSnapshot
 
 __all__ = [
     "Player",
@@ -38,5 +39,6 @@ __all__ = [
     "MessageRole",
     "ActionStatus",
     "ActionRisk",
+    "FPLApiSnapshot",
 ]
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 from datetime import datetime
-from .db import db
+
+from app.db import db
 
 
 class Player(db.Model):
@@ -70,3 +72,5 @@ class Squad(db.Model):
     budget = db.Column(db.Float, default=100.0)
     total_score = db.Column(db.Float, default=0.0)
     serialized = db.Column(db.JSON, nullable=False)  # list of players with roles
+
+

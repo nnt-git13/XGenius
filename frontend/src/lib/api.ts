@@ -183,11 +183,41 @@ export const api = {
   },
 
   // Copilot
-  async askCopilot(question: string) {
-    const response = await client.post("/assistant/ask", {
-      question,
-    });
-    return response.data;
+  async askCopilot(
+    question: string,
+    options?: {
+      conversation_id?: number;
+      team_id?: number;
+      user_id?: number;
+      route?: string;
+      app_state?: Record<string, any>;
+    }
+  ) {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    
+    try {
+      const response = await fetch(`${apiUrl}/api/v1/copilot/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: question,
+          conversation_id: options?.conversation_id,
+          team_id: options?.team_id,
+          user_id: options?.user_id,
+          route: options?.route || window.location.pathname,
+          app_state: options?.app_state || {},
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Copilot endpoint failed: ${response.status}`);
+      }
+      
+      return response.json();
+    } catch (err) {
+      console.error("Copilot error:", err);
+      throw err;
+    }
   },
 
   // ML Predictions

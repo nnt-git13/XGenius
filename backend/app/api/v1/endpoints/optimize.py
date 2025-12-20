@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.db import get_db
 from app.api.v1.schemas.optimize import OptimizeSquadRequest, OptimizeSquadResponse
 from app.services.optimizer import SquadOptimizer
 

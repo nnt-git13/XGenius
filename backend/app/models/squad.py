@@ -4,7 +4,7 @@ Squad and optimization models.
 from __future__ import annotations
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, DateTime, Index, JSON, Text
-from ..core.database import Base
+from app.db import Base
 
 
 class Squad(Base):

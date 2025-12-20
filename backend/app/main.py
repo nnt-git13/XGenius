@@ -12,7 +12,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from .core.config import settings
-from .core.database import init_db
+from .db import init_db
 from .api.v1.router import api_router
 
 # Configure logging
