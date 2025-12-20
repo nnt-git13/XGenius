@@ -11,6 +11,12 @@ interface ModalProps {
   title?: string
   children: React.ReactNode
   size?: "sm" | "md" | "lg" | "xl" | "full"
+  /** Controls where the modal is anchored within the viewport. */
+  placement?: "center" | "right"
+  /** Extra classes for the viewport container (useful for top/right anchoring). */
+  containerClassName?: string
+  /** Extra classes for the content wrapper (defaults to scrollable). */
+  contentClassName?: string
   className?: string
 }
 
@@ -20,6 +26,9 @@ export const Modal: React.FC<ModalProps> = ({
   title,
   children,
   size = "md",
+  placement = "center",
+  containerClassName,
+  contentClassName,
   className,
 }) => {
   const sizes = {
@@ -44,20 +53,26 @@ export const Modal: React.FC<ModalProps> = ({
           />
 
           {/* Modal */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+          <div
+            className={cn(
+              "fixed inset-0 z-50 flex p-4 pointer-events-none",
+              placement === "right" ? "items-start justify-end pt-24" : "items-center justify-center",
+              containerClassName
+            )}
+          >
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className={cn(
-                "bg-fpl-gray border border-fpl-green/50 rounded-xl shadow-neon-green w-full pointer-events-auto",
+                "bg-fpl-gray border border-fpl-green/50 rounded-xl shadow-neon-green w-full pointer-events-auto flex flex-col",
                 sizes[size],
                 className
               )}
             >
               {/* Header */}
               {title && (
-                <div className="flex items-center justify-between p-6 border-b border-white/10">
+                <div className="flex items-center justify-between p-6 border-b border-white/10 shrink-0">
                   <h2 className="text-2xl font-bold gradient-text">{title}</h2>
                   <button
                     onClick={onClose}
@@ -69,7 +84,7 @@ export const Modal: React.FC<ModalProps> = ({
               )}
 
               {/* Content */}
-              <div className="p-6">{children}</div>
+              <div className={cn("p-6 flex-1 overflow-auto", contentClassName)}>{children}</div>
             </motion.div>
           </div>
         </>
@@ -77,6 +92,7 @@ export const Modal: React.FC<ModalProps> = ({
     </AnimatePresence>
   )
 }
+
 
 
 

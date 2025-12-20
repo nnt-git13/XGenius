@@ -11,6 +11,7 @@ interface PitchCardProps {
   formation: Formation
   captainId?: number | null
   viceCaptainId?: number | null
+  highlightedPlayerIds?: Set<number>
   selectedPlayerId?: number | null
   onPlayerClick?: (player: PlayerDetail) => void
   onPlayerHover?: (player: PlayerDetail | null) => void
@@ -25,6 +26,7 @@ export function PitchCard({
   formation,
   captainId,
   viceCaptainId,
+  highlightedPlayerIds,
   selectedPlayerId,
   onPlayerClick,
   onPlayerHover,
@@ -90,6 +92,7 @@ export function PitchCard({
           formation={formation}
           captainId={captainId}
           viceCaptainId={viceCaptainId}
+          highlightedPlayerIds={highlightedPlayerIds}
           selectedPlayerId={selectedPlayerId}
           onPlayerClick={onPlayerClick}
           onPlayerHover={onPlayerHover}

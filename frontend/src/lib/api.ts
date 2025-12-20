@@ -230,6 +230,17 @@ export const api = {
     const response = await client.post("/ml/predict", data);
     return response.data;
   },
+
+  // FPL proxy (backend -> FPL). Use these instead of calling fantasy.premierleague.com from the browser (CORS).
+  async getFplBootstrapStatic() {
+    const response = await client.get("/fpl/bootstrap-static", { timeout: 30000 });
+    return response.data;
+  },
+
+  async getFplElementSummary(playerId: number) {
+    const response = await client.get(`/fpl/element-summary/${playerId}`, { timeout: 30000 });
+    return response.data;
+  },
 };
 
 // Export Player type

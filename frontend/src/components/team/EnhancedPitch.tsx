@@ -11,6 +11,7 @@ interface EnhancedPitchProps {
   formation: Formation
   captainId?: number | null
   viceCaptainId?: number | null
+  highlightedPlayerIds?: Set<number>
   selectedPlayerId?: number | null
   onPlayerClick?: (player: PlayerDetail) => void
   onPlayerHover?: (player: PlayerDetail | null) => void
@@ -22,6 +23,7 @@ export const EnhancedPitch: React.FC<EnhancedPitchProps> = ({
   formation,
   captainId,
   viceCaptainId,
+  highlightedPlayerIds,
   selectedPlayerId,
   onPlayerClick,
   onPlayerHover,
@@ -276,6 +278,7 @@ export const EnhancedPitch: React.FC<EnhancedPitchProps> = ({
               const isSelected = player?.id === selectedPlayerId
               const isCaptain = player?.id === captainId
               const isViceCaptain = player?.id === viceCaptainId
+              const isTransferredIn = !!player && !!highlightedPlayerIds && highlightedPlayerIds.has(player.id)
               
               return (
                 <motion.div
@@ -331,6 +334,7 @@ export const EnhancedPitch: React.FC<EnhancedPitchProps> = ({
                         isCaptain={isCaptain}
                         isViceCaptain={isViceCaptain}
                         isSelected={isSelected}
+                        transferBadge={isTransferredIn ? "in" : null}
                         onSelect={() => onPlayerClick?.(player)}
                         className="relative z-10"
                       />

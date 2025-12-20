@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query"
 import { motion } from "framer-motion"
 import { ArrowLeft, TrendingUp, Target, Award, Calendar } from "lucide-react"
 import Link from "next/link"
-import { api, listPlayers } from "@/lib/api"
+import { api } from "@/lib/api"
 import { Card } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Loading } from "@/components/ui/Loading"
@@ -25,10 +25,8 @@ export default function PlayerProfilePage() {
   const { data: playerData, isLoading, error } = useQuery({
     queryKey: ['player', playerId],
     queryFn: async () => {
-      // Fetch from FPL bootstrap-static API
-      const response = await fetch('https://fantasy.premierleague.com/api/bootstrap-static/')
-      if (!response.ok) throw new Error('Failed to fetch player data')
-      const data = await response.json()
+      // Fetch bootstrap-static via our backend proxy (browser cannot call FPL directly due to CORS)
+      const data = await api.getFplBootstrapStatic()
       
       // Try to find player by ID (could be FPL element ID or our internal ID)
       const playerIdNum = parseInt(playerId)
@@ -88,7 +86,8 @@ export default function PlayerProfilePage() {
     { gameweek: 6, points: 11, expected: 10.5 },
   ]
 
-  const backHref = fromPage === 'transfers' ? '/transfers' : '/team'
+  // Always return to the current/latest gameweek when navigating back to /team
+  const backHref = fromPage === 'transfers' ? '/transfers' : '/team?gw=latest'
   const backLabel = fromPage === 'transfers' ? 'Back to Transfers' : 'Back to My Team'
 
   if (isLoading) {
@@ -100,16 +99,17 @@ export default function PlayerProfilePage() {
   }
 
   if (error || (!playerData && !isLoading)) {
+    const errMsg = (error as any)?.message ? String((error as any).message) : null
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center max-w-md px-4">
-          <h1 className="text-2xl font-bold text-white mb-4">Player not found</h1>
+          <h1 className="text-2xl font-bold text-white mb-4">Unable to load player</h1>
           <p className="text-white/70 mb-6">
-            Could not find player with ID: {playerId}
+            {errMsg ? errMsg : `Could not load player with ID: ${playerId}`}
           </p>
           <div className="flex gap-3 justify-center">
             <Button onClick={() => router.back()}>Go Back</Button>
-            <Button variant="outline" onClick={() => router.push('/team')}>
+            <Button variant="outline" onClick={() => router.push('/team?gw=latest')}>
               Back to My Team
             </Button>
           </div>
@@ -241,6 +241,7 @@ export default function PlayerProfilePage() {
     </div>
   )
 }
+
 
 
 

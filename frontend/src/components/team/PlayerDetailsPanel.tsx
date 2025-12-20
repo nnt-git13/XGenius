@@ -12,7 +12,10 @@ interface PlayerDetailsPanelProps {
   isCaptain?: boolean
   isViceCaptain?: boolean
   onSetCaptain?: () => void
+  onSetViceCaptain?: () => void
   onTransfer?: () => void
+  actionsDisabled?: boolean
+  actionsDisabledLabel?: string
   className?: string
 }
 
@@ -21,7 +24,10 @@ export function PlayerDetailsPanel({
   isCaptain,
   isViceCaptain,
   onSetCaptain,
+  onSetViceCaptain,
   onTransfer,
+  actionsDisabled = false,
+  actionsDisabledLabel = "Unavailable for previous gameweeks",
   className,
 }: PlayerDetailsPanelProps) {
   return (
@@ -112,30 +118,74 @@ export function PlayerDetailsPanel({
 
             {/* Actions */}
             <div className="mt-5 grid grid-cols-1 gap-2">
-              {!isCaptain && onSetCaptain && (
-                <button
-                  type="button"
-                  onClick={onSetCaptain}
-                  className="xg-focus-ring h-10 rounded-xl bg-ai-primary/15 border border-ai-primary/25 text-ai-primary font-semibold text-sm hover:bg-ai-primary/20"
-                >
-                  Set as captain
-                </button>
-              )}
-              {onTransfer && (
-                <button
-                  type="button"
-                  onClick={onTransfer}
-                  className="xg-focus-ring h-10 rounded-xl bg-white/5 border border-white/10 text-white/90 font-semibold text-sm hover:bg-white/8"
-                >
-                  Transfer out
-                </button>
-              )}
+              {/* Disabled actions block (captain/transfer) */}
+              <div className="relative grid grid-cols-1 gap-2">
+                {!isCaptain && onSetCaptain && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!actionsDisabled) onSetCaptain()
+                    }}
+                    disabled={actionsDisabled}
+                    className={cn(
+                      "xg-focus-ring h-10 rounded-xl border font-semibold text-sm transition-colors",
+                      actionsDisabled
+                        ? "bg-white/5 border-white/10 text-white/35 cursor-not-allowed"
+                        : "bg-ai-primary/15 border-ai-primary/25 text-ai-primary hover:bg-ai-primary/20"
+                    )}
+                  >
+                    Set as captain
+                  </button>
+                )}
+                {!isViceCaptain && !isCaptain && onSetViceCaptain && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!actionsDisabled) onSetViceCaptain()
+                    }}
+                    disabled={actionsDisabled}
+                    className={cn(
+                      "xg-focus-ring h-10 rounded-xl border font-semibold text-sm transition-colors",
+                      actionsDisabled
+                        ? "bg-white/5 border-white/10 text-white/35 cursor-not-allowed"
+                        : "bg-blue-400/15 border-blue-400/25 text-blue-200 hover:bg-blue-400/20"
+                    )}
+                  >
+                    Set as vice captain
+                  </button>
+                )}
+                {onTransfer && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!actionsDisabled) onTransfer()
+                    }}
+                    disabled={actionsDisabled}
+                    className={cn(
+                      "xg-focus-ring h-10 rounded-xl border font-semibold text-sm transition-colors",
+                      actionsDisabled
+                        ? "bg-white/5 border-white/10 text-white/35 cursor-not-allowed"
+                        : "bg-white/5 border-white/10 text-white/90 hover:bg-white/8"
+                    )}
+                  >
+                    Transfer out
+                  </button>
+                )}
+
+                {actionsDisabled && (onTransfer || onSetCaptain) && (
+                  <div className="pointer-events-none absolute inset-0 rounded-xl bg-black/35 border border-white/10 flex items-center justify-center">
+                    <div className="px-3 py-2 rounded-lg bg-black/55 border border-white/10 text-white/75 text-xs font-semibold">
+                      {actionsDisabledLabel}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={() => {
-                  // Use fpl_code if available (FPL element ID), otherwise fall back to id
-                  // Both should be the same, but fpl_code is more explicit
-                  const playerId = (player.fpl_code ?? player.id)?.toString()
+                  // Player profile route expects FPL element id (bootstrap-static `elements[].id`)
+                  const playerId = (player.fpl_id ?? player.id)?.toString()
                   if (playerId) {
                     window.location.href = `/player/${playerId}?from=team`
                   } else {

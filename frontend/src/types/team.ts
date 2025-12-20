@@ -4,12 +4,17 @@
 
 export interface PlayerDetail {
   id: number
+  // FPL identifiers:
+  // - fpl_id: FPL element id (bootstrap-static `elements[].id`) used for `/player/[id]` routes
+  // - fpl_code: FPL "code" field (not the same as element id)
+  fpl_id?: number | null
   name: string
   position: "GK" | "DEF" | "MID" | "FWD"
   team: string
   team_short_name?: string
   price: number // Price in millions (e.g., 10.5 = £10.5M)
   fpl_code?: number | null
+  db_id?: number | null
   team_fpl_code?: number | null // FPL team code for shirt images
   status: "a" | "i" | "s" | "u" | "d" // a=available, i=injured, s=suspended, u=unavailable, d=doubtful
   is_starting?: boolean

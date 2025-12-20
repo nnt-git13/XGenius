@@ -153,12 +153,12 @@ class TeamEvaluator:
                     logger.error(error_msg)
                 elif picks_response and picks_response.status_code == 200:
                     picks_data = picks_response.json()
-                    # Extract player element IDs (FPL codes) from picks
+                    # Extract player element IDs from picks
                     picks = picks_data.get("picks", [])
                     # Store picks data for later use (to determine starting XI vs bench)
                     picks_by_element = {pick.get("element"): pick for pick in picks if pick.get("element")}
-                    fpl_codes = [pick.get("element") for pick in picks if pick.get("element")]
-                    logger.info(f"Found {len(fpl_codes)} FPL element IDs in picks")
+                    element_ids = [pick.get("element") for pick in picks if pick.get("element")]
+                    logger.info(f"Found {len(element_ids)} FPL element IDs in picks")
 
                     # Build a response directly from FPL bootstrap-static for accuracy (GW points, multipliers, order)
                     # This avoids mismatches when the local DB is missing/behind on WeeklyScore/player mappings.
@@ -175,7 +175,9 @@ class TeamEvaluator:
                         
                         # Determine if this is a historical gameweek (not current)
                         latest_gw = _latest_gw_from_bootstrap(bootstrap_data)
-                        is_historical_gw = gameweek is not None and gameweek != latest_gw
+                        # Only treat as "historical" if the requested GW is in the past.
+                        # Upcoming GWs (gameweek > latest_gw) should NOT trigger per-player element-summary calls.
+                        is_historical_gw = gameweek is not None and gameweek < latest_gw
 
                         # Sort picks into FPL UI order: 1-11 starting XI, 12-15 bench
                         picks_sorted = sorted(picks, key=lambda p: p.get("position", 99))
@@ -250,8 +252,11 @@ class TeamEvaluator:
                                 vice_captain_id = element_id
 
                             players_data.append(PlayerDetail(
-                                id=int(element_id),  # Use FPL element id as stable identifier for UI selection
-                                fpl_code=int(element_id),
+                                # Use FPL element id as stable identifier for UI selection
+                                id=int(element_id),
+                                fpl_id=int(element_id),
+                                fpl_code=int(el.get("code")) if el.get("code") is not None else None,
+                                db_id=None,
                                 name=str(el.get("web_name") or f"{el.get('first_name','')} {el.get('second_name','')}".strip()),
                                 position=position,
                                 team=str(team_info.get("name") or "Unknown"),
@@ -302,27 +307,26 @@ class TeamEvaluator:
                     except Exception as e:
                         logger.warning(f"FPL bootstrap-derived evaluation failed; falling back to DB mapping: {str(e)}", exc_info=True)
                     
-                    # Convert FPL codes to internal player IDs by matching fpl_code
-                    if fpl_codes:
-                        # First try matching by fpl_code
-                        players = self.db.query(Player).filter(Player.fpl_code.in_(fpl_codes)).all()
+                    # Convert FPL element IDs to internal player IDs by matching players.fpl_id
+                    if element_ids:
+                        players = self.db.query(Player).filter(Player.fpl_id.in_(element_ids)).all()
                         matched_ids = [p.id for p in players]
-                        logger.info(f"Matched {len(matched_ids)} players by fpl_code")
+                        logger.info(f"Matched {len(matched_ids)} players by fpl_id")
                         
                         # If we didn't match all players, try using bootstrap-static to get player names
-                        if len(matched_ids) < len(fpl_codes):
-                            logger.warning(f"Only matched {len(matched_ids)}/{len(fpl_codes)} players by fpl_code. Trying name-based fallback matching.")
+                        if len(matched_ids) < len(element_ids):
+                            logger.warning(f"Only matched {len(matched_ids)}/{len(element_ids)} players by fpl_id. Trying name-based fallback matching.")
                             # Try to get player info from bootstrap-static for unmatched codes
                             try:
                                 bootstrap_response = requests.get(f"{settings.FPL_API_BASE_URL}/bootstrap-static/", timeout=10)
                                 bootstrap_data = bootstrap_response.json()
                                 elements = {e["id"]: e for e in bootstrap_data.get("elements", [])}
                                 
-                                unmatched_codes = set(fpl_codes) - {p.fpl_code for p in players if p.fpl_code}
-                                logger.info(f"Attempting to match {len(unmatched_codes)} players by name")
+                                unmatched_element_ids = set(element_ids) - {p.fpl_id for p in players if p.fpl_id}
+                                logger.info(f"Attempting to match {len(unmatched_element_ids)} players by name")
                                 
-                                for code in unmatched_codes:
-                                    element = elements.get(code)
+                                for element_id in unmatched_element_ids:
+                                    element = elements.get(element_id)
                                     if element:
                                         # Try to find by name - try multiple name formats
                                         web_name = element.get("web_name", "").lower().strip()
@@ -353,22 +357,22 @@ class TeamEvaluator:
                                         
                                         if player and player.id not in matched_ids:
                                             matched_ids.append(player.id)
-                                            # Update fpl_code for future matches
-                                            if not player.fpl_code:
-                                                player.fpl_code = code
-                                                logger.info(f"✓ Matched and updated fpl_code for player '{player.name}' (ID: {player.id}) = {code}")
+                                            # Update fpl_id so future lookups match by element id
+                                            if not player.fpl_id:
+                                                player.fpl_id = int(element_id)
+                                                logger.info(f"✓ Matched and updated fpl_id for player '{player.name}' (ID: {player.id}) = {element_id}")
                                             else:
-                                                logger.info(f"✓ Matched player '{player.name}' (ID: {player.id}) by name for FPL code {code}")
+                                                logger.info(f"✓ Matched player '{player.name}' (ID: {player.id}) by name for FPL element id {element_id}")
                                         else:
                                             # Player not found - create it on-the-fly if we have enough info
-                                            logger.warning(f"✗ Could not match FPL code {code} (FPL name: '{full_name}', web_name: '{web_name}')")
+                                            logger.warning(f"✗ Could not match FPL element id {element_id} (FPL name: '{full_name}', web_name: '{web_name}')")
                                             
                                             # Try to create the player if we have team info
                                             try:
                                                 # Get team from bootstrap data
                                                 team_id_fpl = element.get("team")
                                                 if team_id_fpl:
-                                                    team = self.db.query(Team).filter(Team.fpl_code == team_id_fpl).first()
+                                                    team = self.db.query(Team).filter(Team.fpl_id == team_id_fpl).first()
                                                     
                                                     # Create team if it doesn't exist
                                                     if not team:
@@ -377,13 +381,14 @@ class TeamEvaluator:
                                                         team_info = next((t for t in teams_data if t["id"] == team_id_fpl), None)
                                                         if team_info:
                                                             team = Team(
-                                                                fpl_code=team_id_fpl,
+                                                                fpl_id=team_id_fpl,
+                                                                fpl_code=team_info.get("code"),
                                                                 name=team_info.get("name", "Unknown"),
                                                                 short_name=team_info.get("short_name", "UNK"),
                                                             )
                                                             self.db.add(team)
                                                             self.db.flush()
-                                                            logger.info(f"Created new team '{team.name}' (ID: {team.id}) with fpl_code {team_id_fpl}")
+                                                            logger.info(f"Created new team '{team.name}' (ID: {team.id}) with fpl_id {team_id_fpl}")
                                                     
                                                     if team:
                                                         # Map element_type to position
@@ -393,7 +398,8 @@ class TeamEvaluator:
                                                         
                                                         # Create new player
                                                         new_player = Player(
-                                                            fpl_code=code,
+                                                            fpl_id=int(element_id),
+                                                            fpl_code=element.get("code"),
                                                             name=full_name,
                                                             first_name=first_name,
                                                             second_name=second_name,
@@ -406,9 +412,9 @@ class TeamEvaluator:
                                                         self.db.add(new_player)
                                                         self.db.flush()  # Get the ID
                                                         matched_ids.append(new_player.id)
-                                                        logger.info(f"✓ Created new player '{full_name}' (ID: {new_player.id}) with fpl_code {code}")
+                                                        logger.info(f"✓ Created new player '{full_name}' (ID: {new_player.id}) with fpl_id {element_id}")
                                             except Exception as e:
-                                                logger.debug(f"Could not create player for code {code}: {str(e)}")
+                                                logger.debug(f"Could not create player for element_id {element_id}: {str(e)}")
                                 
                                 # Commit any fpl_code updates and new players
                                 try:
@@ -449,8 +455,8 @@ class TeamEvaluator:
         fpl_to_pid = {}
         for pid in player_ids:
             player = self.db.query(Player).filter(Player.id == pid).first()
-            if player and player.fpl_code:
-                fpl_to_pid[player.fpl_code] = pid
+            if player and player.fpl_id:
+                fpl_to_pid[player.fpl_id] = pid
         
         # If we have picks data, use it to order players (starting XI first, then bench)
         ordered_pids = player_ids
@@ -460,7 +466,7 @@ class TeamEvaluator:
                 picks_by_element.items(),
                 key=lambda x: picks_by_element.get(x[0], {}).get("position", 99)
             )
-            ordered_pids = [fpl_to_pid.get(fpl_code) for fpl_code, _ in sorted_picks if fpl_code in fpl_to_pid]
+            ordered_pids = [fpl_to_pid.get(element_id) for element_id, _ in sorted_picks if element_id in fpl_to_pid]
             # Add any players not in picks (shouldn't happen, but safety)
             for pid in player_ids:
                 if pid not in ordered_pids:
@@ -483,7 +489,10 @@ class TeamEvaluator:
                 season_points = sum(p[0] for p in points_query.all())
                 
                 players_data.append(PlayerDetail(
-                    id=player.id,
+                    # Use element id for UI + routing stability; keep DB PK separately
+                    id=int(player.fpl_id or player.id),
+                    fpl_id=int(player.fpl_id) if player.fpl_id is not None else None,
+                    db_id=int(player.id),
                     name=player.name,
                     position=player.position,
                     team=player.team.name if player.team else "Unknown",

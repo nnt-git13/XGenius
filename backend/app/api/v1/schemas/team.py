@@ -15,7 +15,13 @@ class PlayerBase(BaseModel):
 
 class PlayerDetail(PlayerBase):
     """Detailed player schema."""
+    # FPL identifiers:
+    # - fpl_id: FPL "element id" (what bootstrap-static uses as `elements[].id`)
+    # - fpl_code: FPL "code" (different from element id; internal)
+    fpl_id: Optional[int] = None
     fpl_code: Optional[int] = None
+    # Internal DB PK for `players` table (useful for backend joins/debugging)
+    db_id: Optional[int] = None
     team_fpl_code: Optional[int] = None  # FPL team code for shirt images
     team_short_name: Optional[str] = None
     status: str = "a"

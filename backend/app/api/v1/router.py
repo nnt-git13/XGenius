@@ -13,6 +13,7 @@ from .endpoints import (
     ml,
     ingest,
     players,
+    fpl,
 )
 
 api_router = APIRouter()
@@ -27,4 +28,5 @@ api_router.include_router(copilot_metrics.router, prefix="/copilot", tags=["copi
 api_router.include_router(ml.router, prefix="/ml", tags=["ml"])
 api_router.include_router(ingest.router, prefix="/admin", tags=["admin"])
 api_router.include_router(players.router, prefix="/players", tags=["players"])
+api_router.include_router(fpl.router, prefix="/fpl", tags=["fpl"])
 

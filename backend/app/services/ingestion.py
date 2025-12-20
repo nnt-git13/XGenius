@@ -3,18 +3,16 @@ Data ingestion service for FPL data.
 Enhanced with validation and error handling.
 """
 from __future__ import annotations
-import csv
 import io
 import pandas as pd
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict
 from sqlalchemy.orm import Session
-from datetime import datetime
 
-from app.models import Player, WeeklyScore, Team
+from app.models import Player, WeeklyScore
 
 
 class DataIngestionService:
-    """Handles data ingestion from FPL API and CSVs."""
+    """Handles data ingestion from CSVs (weekly scores)."""
     
     REQUIRED_COLUMNS = ["Name", "GW", "Points", "Minutes"]
     
@@ -123,30 +121,3 @@ class DataIngestionService:
                 "message": str(e),
                 "ingested_count": ingested_count,
             }
-    
-    async def bootstrap_season(self, season: str) -> Dict[str, Any]:
-        """Bootstrap a season with initial player data from FPL API."""
-        try:
-            # Delegate to the shared async ingestion used by CLI and /ingest/bootstrap.
-            from app.services.fpl_ingestion import FPLIngestionService
-
-            svc = FPLIngestionService(self.db)
-            counts = await svc.ingest_bootstrap_static(season=season)
-            await svc.close()
-            return {"status": "success", "season": season, **counts}
-        except Exception as e:
-            self.db.rollback()
-            return {
-                "status": "error",
-                "message": str(e),
-            }
-    
-    def _map_position(self, element_type: Optional[int]) -> str:
-        """Map FPL element_type to position string."""
-        mapping = {
-            1: "GK",
-            2: "DEF",
-            3: "MID",
-            4: "FWD",
-        }
-        return mapping.get(element_type, "MID")

@@ -15,6 +15,7 @@ interface PlayerChipProps {
   isViceCaptain?: boolean
   isSelected?: boolean
   isBench?: boolean
+  transferBadge?: "in" | null
   onSelect?: () => void
   className?: string
 }
@@ -25,6 +26,7 @@ export function PlayerChip({
   isViceCaptain = false,
   isSelected = false,
   isBench = false,
+  transferBadge = null,
   onSelect,
   className,
 }: PlayerChipProps) {
@@ -56,6 +58,14 @@ export function PlayerChip({
       {/* Badge overlay */}
       <div className="relative">
         <StatusBadges player={player} isCaptain={isCaptain} isViceCaptain={isViceCaptain} />
+        {transferBadge === "in" && (
+          <div
+            className="absolute -bottom-1 -right-1 bg-ai-primary text-black rounded-full px-2 py-0.5 text-[10px] font-extrabold shadow-lg border border-ai-primary/60 z-20"
+            title="Transferred in (draft)"
+          >
+            IN
+          </div>
+        )}
 
         {/* Shirt with accent ring */}
         <div
@@ -64,6 +74,7 @@ export function PlayerChip({
             "bg-white/5 border border-white/10",
             "shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
             isSelected && "border-ai-primary/40 shadow-[0_0_0_1px_rgba(0,255,133,0.25),0_16px_40px_rgba(0,0,0,0.45)]",
+            transferBadge === "in" && "border-ai-primary/60 shadow-[0_0_0_1px_rgba(0,255,133,0.35)]",
             player.status !== "a" && "saturate-50 opacity-90"
           )}
         >

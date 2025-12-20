@@ -54,6 +54,7 @@ class Player(Base):
     score_objects = relationship("ScoreObject", back_populates="player", cascade="all, delete-orphan")
     hype_scores = relationship("HypeScore", back_populates="player", cascade="all, delete-orphan")
     ml_predictions = relationship("MLPrediction", back_populates="player", cascade="all, delete-orphan")
+    season_stats = relationship("PlayerSeasonStat", back_populates="player", cascade="all, delete-orphan")
     
     __table_args__ = (
         Index("idx_player_season_position", "team_id", "position"),

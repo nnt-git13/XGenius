@@ -31,20 +31,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/not-found.js"
     ],
-    "/page": [
+    "/player/[id]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
+      "static/chunks/app/player/[id]/page.js"
     ],
-    "/analytics/page": [
+    "/dashboard/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/analytics/page.js"
-    ],
-    "/copilot/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/copilot/page.js"
+      "static/chunks/app/dashboard/page.js"
     ],
     "/transfers/page": [
       "static/chunks/webpack.js",
@@ -56,20 +51,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/optimize/page.js"
     ],
-    "/settings/page": [
+    "/copilot/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/settings/page.js"
+      "static/chunks/app/copilot/page.js"
     ],
-    "/dashboard/page": [
+    "/analytics/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/page.js"
-    ],
-    "/_not-found/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/analytics/page.js"
     ]
   }
 }

@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useRouter, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { AlertCircle, Target, TrendingUp, Settings, ChevronLeft, ChevronRight } from "lucide-react"
 import { api } from "@/lib/api"
@@ -16,6 +17,7 @@ import { PitchCard } from "@/components/team/PitchCard"
 import { EnhancedBenchView } from "@/components/team/EnhancedBenchView"
 import { PlayerDetailsPanel } from "@/components/team/PlayerDetailsPanel"
 import { CopilotPanel } from "@/components/team/CopilotPanel"
+import { TransferSuggestionsModal } from "@/components/team/TransferSuggestionsModal"
 import { cn } from "@/lib/utils"
 
 // Detect formation from player positions
@@ -32,10 +34,20 @@ export default function MyTeamPage() {
   const season = "2025-26"
   const { teamId } = useAppStore()
   const queryClient = useQueryClient()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerDetail | null>(null)
   const [hoveredPlayer, setHoveredPlayer] = useState<PlayerDetail | null>(null)
   const [selectedFormation, setSelectedFormation] = useState<Formation | null>(null)
   const [selectedGameweek, setSelectedGameweek] = useState<number | null>(null) // null = latest gameweek
+  // Local “in-page actions” overrides (captain + transfers) for current/upcoming gameweeks
+  const [localPlayers, setLocalPlayers] = useState<PlayerDetail[] | null>(null)
+  const [localBank, setLocalBank] = useState<number | null>(null)
+  const [localCaptainId, setLocalCaptainId] = useState<number | null>(null)
+  const [localViceCaptainId, setLocalViceCaptainId] = useState<number | null>(null)
+  const [transferOpen, setTransferOpen] = useState(false)
+  const [transferOut, setTransferOut] = useState<PlayerDetail | null>(null)
+  const [transferOriginalByIndex, setTransferOriginalByIndex] = useState<Record<number, PlayerDetail>>({})
 
   const BackgroundVideo = (
     <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
@@ -63,19 +75,83 @@ export default function MyTeamPage() {
   // Track if we're switching gameweeks
   const [isSwitchingGameweek, setIsSwitchingGameweek] = useState(false)
   const [previousGameweek, setPreviousGameweek] = useState<number | null>(null)
+
+  // If we navigated back from player profile, always reset to the latest/current gameweek.
+  useEffect(() => {
+    const gwParam = searchParams.get("gw")
+    if (gwParam === "latest") {
+      setSelectedGameweek(null)
+      setIsSwitchingGameweek(false)
+      // Reset local overrides when explicitly returning to latest
+      setLocalPlayers(null)
+      setLocalBank(null)
+      setLocalCaptainId(null)
+      // Clean the URL so refresh/bookmarks don't keep forcing resets.
+      router.replace("/team")
+    }
+  }, [searchParams, router])
+
+  // Fetch FPL bootstrap-static early (we use its deadline info to compute upcoming/latest GW)
+  const { data: fplBootstrap } = useQuery({
+    queryKey: ["fpl-bootstrap-static-lite"],
+    queryFn: () => api.getFplBootstrapStatic(),
+    enabled: !!teamId,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  })
+
+  const { uiLatestGw, uiUpcomingGw } = useMemo(() => {
+    // Use the same source of truth as the official deadline countdown:
+    // - `events[].deadline_time` and `events[].is_next`
+    const events = (fplBootstrap?.events || []) as any[]
+    const now = Date.now()
+
+    const nextByFlag = events.find((e) => e?.is_next)?.id
+    let nextByDeadline: number | null = null
+    for (const e of events) {
+      if (!e?.deadline_time || !e?.id) continue
+      const t = Date.parse(String(e.deadline_time))
+      if (!Number.isFinite(t)) continue
+      if (t > now) {
+        const id = Number(e.id)
+        nextByDeadline = nextByDeadline == null ? id : Math.min(nextByDeadline, id)
+      }
+    }
+
+    const upcoming = (nextByFlag ?? nextByDeadline) != null ? Number(nextByFlag ?? nextByDeadline) : null
+
+    const current = events.find((e) => e?.is_current)?.id
+    const finishedIds = events
+      .filter((e) => e?.finished && e?.id)
+      .map((e) => Number(e.id))
+      .filter((n) => Number.isFinite(n))
+
+    const latest =
+      current != null
+        ? Number(current)
+        : finishedIds.length
+          ? Math.max(...finishedIds)
+          : upcoming != null
+            ? Math.max(1, upcoming - 1)
+            : 1
+
+    const upcomingGw = upcoming != null ? upcoming : Math.min(38, latest + 1)
+    return { uiLatestGw: latest, uiUpcomingGw: upcomingGw }
+  }, [fplBootstrap])
   
   // Calculate what gameweek to fetch based on selectedGameweek
   // If selectedGameweek is current + 1 (upcoming), we'll fetch current gameweek's team
   // We need to determine this after we have the latest gameweek, but we can use a helper
-  const getGameweekToFetch = (selectedGw: number | null, latestGw: number | null): number | undefined => {
+  const getGameweekToFetch = (selectedGw: number | null, latestGw: number | null, upcomingGw: number | null): number | undefined => {
     if (selectedGw === null) return undefined // Latest
     if (latestGw === null) return selectedGw || undefined
-    // If selected is latest + 1, fetch latest
-    if (selectedGw === latestGw + 1) return latestGw
+    // If selected is upcoming (next deadline), fetch latest team snapshot and treat as preview
+    if (upcomingGw !== null && selectedGw === upcomingGw) return latestGw
     return selectedGw
   }
   
-  const gameweekToFetch = getGameweekToFetch(selectedGameweek, latestGameweek)
+  const gameweekToFetch = getGameweekToFetch(selectedGameweek, latestGameweek, uiUpcomingGw ?? null)
   
   // Detect gameweek changes
   useEffect(() => {
@@ -89,7 +165,7 @@ export default function MyTeamPage() {
   const { data: teamData, isLoading, error, isFetching } = useQuery<TeamEvaluationResponse>({
     queryKey: ["my-team", teamId, season, gameweekToFetch],
     queryFn: async () => {
-      const gwToFetch = getGameweekToFetch(selectedGameweek, latestGameweek)
+      const gwToFetch = getGameweekToFetch(selectedGameweek, latestGameweek, uiUpcomingGw ?? null)
       const data = await api.evaluateTeam({ 
         season,
         team_id: teamId || undefined,
@@ -131,18 +207,25 @@ export default function MyTeamPage() {
     }
   }, [teamData?.gameweek, selectedGameweek])
 
-  // Stop showing switching state once data is loaded
+  // Stop showing switching state once we're no longer fetching.
+  // Important: selecting the "upcoming" gameweek does NOT trigger a refetch
+  // (we intentionally reuse the latest GW data), so we must clear the switching
+  // flag on selection change as well to avoid an infinite loading screen.
   useEffect(() => {
-    if (teamData && !isFetching) {
+    if (!isFetching) {
       setIsSwitchingGameweek(false)
     }
-  }, [teamData, isFetching])
-  
-  // Calculate current gameweek and upcoming status (after query)
-  const currentGameweek = latestGameweek ?? teamData?.gameweek ?? selectedGameweek ?? 1
-  const isUpcomingGameweek = selectedGameweek !== null && selectedGameweek === currentGameweek + 1
+  }, [isFetching, selectedGameweek])
+
+  // Calculate statuses:
+  // - Latest (read-only) = uiLatestGw (often the locked/current GW after deadline)
+  // - Upcoming (editable) = uiUpcomingGw (the next deadline GW)
+  const isUpcomingGameweek = selectedGameweek !== null && selectedGameweek === uiUpcomingGw
+  const isPreviousGameweek = selectedGameweek !== null && selectedGameweek < uiLatestGw
+  // Allow actions only for the upcoming (next-deadline) GW.
+  const actionsDisabled = !isUpcomingGameweek
   const minGameweek = 1
-  const maxGameweek = currentGameweek + 1 // Limit to current + 1 (upcoming)
+  const maxGameweek = uiUpcomingGw // Allow up to the upcoming GW
   
   // Transform data for upcoming gameweek
   const displayTeamData = useMemo(() => {
@@ -150,20 +233,43 @@ export default function MyTeamPage() {
     if (isUpcomingGameweek) {
       return {
         ...teamData,
-        gameweek: currentGameweek + 1,
+        gameweek: uiUpcomingGw,
         total_points: 0, // No points yet for upcoming
       }
     }
     return teamData
-  }, [teamData, isUpcomingGameweek, currentGameweek])
+  }, [teamData, isUpcomingGameweek, uiUpcomingGw])
+
+  // Apply local overrides (captain/transfers/bank) on top of API data
+  const displayData = useMemo(() => {
+    const base = displayTeamData || teamData
+    if (!base) {
+      return {
+        total_points: 0,
+        expected_points: 0,
+        squad_value: 0,
+        bank: 100,
+        players: [],
+        captain_id: null,
+        vice_captain_id: null,
+      } as any
+    }
+    // Only apply draft overrides for current/upcoming views. Previous gameweeks are read-only snapshots.
+    const applyDraft = !actionsDisabled
+    const players = applyDraft ? (localPlayers ?? (base.players || [])) : (base.players || [])
+    const bank = applyDraft ? (localBank ?? (base.bank ?? 0)) : (base.bank ?? 0)
+    const captain_id = applyDraft ? (localCaptainId ?? base.captain_id) : base.captain_id
+    const vice_captain_id = applyDraft ? (localViceCaptainId ?? base.vice_captain_id) : base.vice_captain_id
+    return { ...base, players, bank, captain_id, vice_captain_id }
+  }, [displayTeamData, teamData, localPlayers, localBank, localCaptainId, localViceCaptainId, actionsDisabled])
   
   const handlePreviousGameweek = () => {
     if (selectedGameweek === null) {
       // If viewing latest, go to latest - 1
-      setSelectedGameweek(Math.max(minGameweek, currentGameweek - 1))
-    } else if (selectedGameweek === currentGameweek + 1) {
+      setSelectedGameweek(Math.max(minGameweek, uiLatestGw - 1))
+    } else if (selectedGameweek === uiUpcomingGw) {
       // If viewing upcoming, go to current
-      setSelectedGameweek(currentGameweek)
+      setSelectedGameweek(uiLatestGw)
     } else {
       setSelectedGameweek(Math.max(minGameweek, selectedGameweek - 1))
     }
@@ -172,8 +278,8 @@ export default function MyTeamPage() {
   const handleNextGameweek = () => {
     if (selectedGameweek === null) {
       // Go to upcoming gameweek
-      setSelectedGameweek(currentGameweek + 1)
-    } else if (selectedGameweek < currentGameweek + 1) {
+      setSelectedGameweek(uiUpcomingGw)
+    } else if (selectedGameweek < uiUpcomingGw) {
       setSelectedGameweek(Math.min(maxGameweek, selectedGameweek + 1))
     }
     // Already at max, do nothing
@@ -181,14 +287,14 @@ export default function MyTeamPage() {
 
   const handleGameweekSelect = (gw: number | null) => {
     if (gw === "upcoming") {
-      setSelectedGameweek(currentGameweek + 1)
+      setSelectedGameweek(uiUpcomingGw)
     } else {
       setSelectedGameweek(gw)
     }
   }
 
   const { startingXI, bench } = useMemo(() => {
-    const dataToUse = displayTeamData || teamData
+    const dataToUse = displayData
     if (!dataToUse?.players || dataToUse.players.length === 0) {
       return { startingXI: [], bench: [] }
     }
@@ -207,13 +313,62 @@ export default function MyTeamPage() {
     const bench = allPlayers.filter(p => !p.is_starting).slice(0, 4)
     
     return { startingXI, bench }
-  }, [displayTeamData, teamData, isUpcomingGameweek])
+  }, [displayData, isUpcomingGameweek])
 
   const formation = useMemo(() => {
     if (selectedFormation) return selectedFormation
     if (startingXI.length > 0) return detectFormation(startingXI)
     return FORMATIONS[0]
   }, [startingXI, selectedFormation])
+
+  const transferredInIds = useMemo(() => {
+    // Only highlight when draft applies (current/upcoming)
+    if (actionsDisabled) return new Set<number>()
+    const next = new Set<number>()
+    for (const idxStr of Object.keys(transferOriginalByIndex)) {
+      const idx = Number(idxStr)
+      const p = (localPlayers ?? displayData.players ?? [])[idx]
+      if (p) next.add(p.id)
+    }
+    return next
+  }, [actionsDisabled, transferOriginalByIndex, localPlayers, displayData.players])
+
+  const applyTransfer = (outP: PlayerDetail, inP: PlayerDetail) => {
+    // Draft transfers only make sense on current/upcoming views.
+    if (actionsDisabled) return
+    const basePlayers = (localPlayers ?? (displayTeamData || teamData)?.players ?? []) as PlayerDetail[]
+    const idx = basePlayers.findIndex((p) => p.id === outP.id)
+    if (idx < 0) return
+
+    const next = [...basePlayers]
+    // Save the original player for this slot so user can revert later.
+    setTransferOriginalByIndex((prev) => {
+      if (prev[idx]) return prev
+      return { ...prev, [idx]: outP }
+    })
+    next[idx] = {
+      ...inP,
+      is_starting: outP.is_starting,
+      multiplier: outP.multiplier,
+      is_captain: false,
+      is_vice_captain: false,
+    }
+
+    // Adjust local bank
+    const bankNow = Number(localBank ?? displayData.bank ?? 0)
+    const newBank = bankNow + Number(outP.price || 0) - Number(inP.price || 0)
+    setLocalPlayers(next)
+    setLocalBank(Number.isFinite(newBank) ? Math.max(0, newBank) : bankNow)
+
+    // If the transferred-out player was captain, keep captain on the incoming by default (feels intuitive)
+    const cap = Number(localCaptainId ?? displayData.captain_id ?? 0)
+    if (cap && cap === outP.id) setLocalCaptainId(inP.id)
+    const vc = Number(localViceCaptainId ?? displayData.vice_captain_id ?? 0)
+    if (vc && vc === outP.id) setLocalViceCaptainId(inP.id)
+
+    // Update selection
+    setSelectedPlayer(next[idx])
+  }
 
   // Show message if no team ID is configured
   if (!teamId) {
@@ -245,7 +400,7 @@ export default function MyTeamPage() {
         {BackgroundVideo}
         <div className="relative container mx-auto px-4 py-10 max-w-6xl z-10">
           <div className="flex items-center justify-center min-h-[60vh]">
-            <Loading size="lg" text={isSwitchingGameweek ? `Loading Gameweek ${selectedGameweek || currentGameweek}...` : "Loading your team..."} />
+            <Loading size="lg" text={isSwitchingGameweek ? `Loading Gameweek ${selectedGameweek || uiLatestGw}...` : "Loading your team..."} />
           </div>
         </div>
       </div>
@@ -255,16 +410,6 @@ export default function MyTeamPage() {
   // NOTE:
   // We intentionally do NOT hard-fail the entire page on `error` here.
   // The UI below can still render with placeholder data and show a connection warning.
-
-  const displayData = displayTeamData || teamData || {
-    total_points: 0,
-    expected_points: 0,
-    squad_value: 0,
-    bank: 100,
-    players: [],
-    captain_id: null,
-    vice_captain_id: null,
-  }
 
   return (
     <div className="min-h-screen relative overflow-hidden bg-black">
@@ -299,7 +444,7 @@ export default function MyTeamPage() {
         <div className="flex items-center justify-between mb-6">
           <SectionHeader
             title="My Team"
-            subtitle={`${teamData?.season || season} • ${isUpcomingGameweek ? "Upcoming Gameweek" : `Gameweek ${currentGameweek}${selectedGameweek === null ? " (Latest)" : ""}`}`}
+            subtitle={`${teamData?.season || season} • ${isUpcomingGameweek ? "Upcoming Gameweek" : `Gameweek ${uiLatestGw}${selectedGameweek === null ? " (Latest)" : ""}`}`}
           />
           
           {/* Gameweek Navigation Controls */}
@@ -327,21 +472,21 @@ export default function MyTeamPage() {
                   if (value === "latest") {
                     handleGameweekSelect(null)
                   } else if (value === "upcoming") {
-                    handleGameweekSelect(currentGameweek + 1)
+                    handleGameweekSelect(uiUpcomingGw)
                   } else {
                     handleGameweekSelect(parseInt(value, 10))
                   }
                 }}
                 className="px-4 py-2 rounded-lg border border-white/20 bg-white/10 text-white text-sm font-medium hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-ai-primary/50 focus:border-ai-primary/50 transition-all"
               >
-                <option value="latest">Latest (GW {currentGameweek})</option>
-                {Array.from({ length: currentGameweek }, (_, i) => i + 1).map((gw) => (
+                <option value="latest">Latest (GW {uiLatestGw})</option>
+                {Array.from({ length: uiLatestGw }, (_, i) => i + 1).map((gw) => (
                   <option key={gw} value={gw} className="bg-gray-900">
                     Gameweek {gw}
                   </option>
                 ))}
                 <option value="upcoming" className="bg-gray-900 font-semibold">
-                  Upcoming (GW {currentGameweek + 1})
+                  Upcoming (GW {uiUpcomingGw})
                 </option>
               </select>
             </div>
@@ -447,7 +592,7 @@ export default function MyTeamPage() {
               <AlertCircle className="h-12 w-12 text-blue-400 mx-auto mb-4" />
               <h3 className="text-xl font-bold text-white mb-2">No Players Found</h3>
               <p className="text-white/70 mb-4">
-                Team ID {teamId} was found but no players could be matched for Gameweek {teamData.gameweek || selectedGameweek || currentGameweek}.
+                Team ID {teamId} was found but no players could be matched for Gameweek {teamData.gameweek || selectedGameweek || uiLatestGw}.
               </p>
             </div>
           </GlassCard>
@@ -480,12 +625,13 @@ export default function MyTeamPage() {
                 } : undefined}
                 captainId={displayData.captain_id}
                 viceCaptainId={displayData.vice_captain_id}
+                highlightedPlayerIds={transferredInIds}
                 selectedPlayerId={selectedPlayer?.id || null}
                 onPlayerClick={setSelectedPlayer}
                 onPlayerHover={setHoveredPlayer}
                 subtitle={isUpcomingGameweek 
                   ? "Upcoming Gameweek • Click players to transfer" 
-                  : `Gameweek ${teamData?.gameweek || "—"} • XI positions animate on formation change`}
+                  : `Gameweek ${uiLatestGw}${selectedGameweek === null ? " (Latest)" : ""} • XI positions animate on formation change`}
               />
 
               {/* Bench */}
@@ -494,6 +640,7 @@ export default function MyTeamPage() {
                   players={bench}
                   captainId={displayData.captain_id}
                   viceCaptainId={displayData.vice_captain_id}
+                  highlightedPlayerIds={transferredInIds}
                   onPlayerClick={setSelectedPlayer}
                 />
               </div>
@@ -505,12 +652,37 @@ export default function MyTeamPage() {
                 player={selectedPlayer}
                 isCaptain={selectedPlayer?.id === displayData.captain_id}
                 isViceCaptain={selectedPlayer?.id === displayData.vice_captain_id}
-                onSetCaptain={() => console.log("Set captain:", selectedPlayer?.id)}
-                onTransfer={() => {
-                  // Navigate to transfers page with player pre-selected
-                  const playerId = selectedPlayer?.fpl_code || selectedPlayer?.id
-                  window.location.href = `/transfers?transfer_out=${playerId}`
+                onSetCaptain={() => {
+                  if (!selectedPlayer) return
+                  const prevCaptain = (localCaptainId ?? displayData.captain_id) as number | null
+                  const prevVice = (localViceCaptainId ?? displayData.vice_captain_id) as number | null
+                  const nextCaptain = selectedPlayer.id
+
+                  // If selecting the vice as captain, swap vice -> previous captain.
+                  if (prevVice && nextCaptain === prevVice) {
+                    setLocalViceCaptainId(prevCaptain && prevCaptain !== nextCaptain ? prevCaptain : null)
+                  }
+                  setLocalCaptainId(nextCaptain)
+                  // Ensure vice != captain
+                  const nextVice = (localViceCaptainId ?? displayData.vice_captain_id) as number | null
+                  if (nextVice && nextVice === nextCaptain) {
+                    setLocalViceCaptainId(prevCaptain && prevCaptain !== nextCaptain ? prevCaptain : null)
+                  }
                 }}
+                onSetViceCaptain={() => {
+                  if (!selectedPlayer) return
+                  const currCaptain = (localCaptainId ?? displayData.captain_id) as number | null
+                  if (currCaptain && selectedPlayer.id === currCaptain) return
+                  setLocalViceCaptainId(selectedPlayer.id)
+                }}
+                onTransfer={() => {
+                  if (!selectedPlayer) return
+                  // Open in-page transfer suggestions (no navigation)
+                  setTransferOut(selectedPlayer)
+                  setTransferOpen(true)
+                }}
+                actionsDisabled={actionsDisabled}
+                actionsDisabledLabel={isUpcomingGameweek ? "Choose transfers/captain for the upcoming deadline GW" : "Deadline passed — read-only"}
               />
 
               <CopilotPanel selectedPlayer={selectedPlayer} />
@@ -518,6 +690,33 @@ export default function MyTeamPage() {
           </div>
         )}
       </div>
+
+      {/* Transfer suggestions modal (current/upcoming only) */}
+      <TransferSuggestionsModal
+        isOpen={transferOpen && !actionsDisabled}
+        onClose={() => {
+          setTransferOpen(false)
+          setTransferOut(null)
+        }}
+        outPlayer={transferOut}
+        revertPlayer={
+          transferOut
+            ? (() => {
+                const basePlayers = (localPlayers ?? displayData.players ?? []) as PlayerDetail[]
+                const idx = basePlayers.findIndex((p) => p.id === transferOut.id)
+                return idx >= 0 ? (transferOriginalByIndex[idx] ?? null) : null
+              })()
+            : null
+        }
+        squadPlayers={(localPlayers ?? displayData.players ?? []) as PlayerDetail[]}
+        bank={Number(localBank ?? displayData.bank ?? 0)}
+        onSelectInPlayer={(p) => {
+          if (!transferOut) return
+          applyTransfer(transferOut, p)
+          setTransferOpen(false)
+          setTransferOut(null)
+        }}
+      />
     </div>
   )
 }

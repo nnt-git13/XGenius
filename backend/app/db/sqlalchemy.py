@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
 from .paths import normalize_database_url
+from .sqlite_migrate import ensure_sqlite_schema
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,14 @@ def init_db() -> None:
         Team,
         Fixture,
         FPLApiSnapshot,
+        PlayerSeasonStat,
+        PLTeam,
+        PLPlayer,
+        PLMatch,
+        PLMatchTeamStats,
+        PLMatchEvent,
+        PLMatchLineup,
+        PLIngestState,
         CopilotConversation,
         CopilotMessage,
         CopilotAction,
@@ -75,6 +84,8 @@ def init_db() -> None:
     )
 
     Base.metadata.create_all(bind=engine)
+    # Keep existing SQLite DB files compatible with new columns/tables.
+    ensure_sqlite_schema(engine)
     logger.info("Database tables initialized")
 
 

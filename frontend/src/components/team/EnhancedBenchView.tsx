@@ -9,6 +9,7 @@ interface EnhancedBenchViewProps {
   players: PlayerDetail[]
   captainId?: number | null
   viceCaptainId?: number | null
+  highlightedPlayerIds?: Set<number>
   onPlayerClick?: (player: PlayerDetail) => void
   className?: string
 }
@@ -28,6 +29,7 @@ export const EnhancedBenchView: React.FC<EnhancedBenchViewProps> = ({
   players,
   captainId,
   viceCaptainId,
+  highlightedPlayerIds,
   onPlayerClick,
   className,
 }) => {
@@ -93,6 +95,7 @@ export const EnhancedBenchView: React.FC<EnhancedBenchViewProps> = ({
                       isBench={true}
                       isCaptain={player.id === captainId}
                       isViceCaptain={player.id === viceCaptainId}
+                      transferBadge={highlightedPlayerIds?.has(player.id) ? "in" : null}
                       onSelect={() => onPlayerClick?.(player)}
                       className="opacity-90 hover:opacity-100 transition-opacity"
                     />
