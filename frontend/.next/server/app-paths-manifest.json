@@ -1,7 +1,8 @@
 {
   "/team/page": "app/team/page.js",
-  "/optimize/page": "app/optimize/page.js",
+  "/player/[id]/page": "app/player/[id]/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/analytics/page": "app/analytics/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/player/[id]/page": "app/player/[id]/page.js"
+  "/transfers/page": "app/transfers/page.js",
+  "/dashboard/page": "app/dashboard/page.js"
 }

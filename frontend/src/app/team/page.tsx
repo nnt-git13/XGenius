@@ -92,7 +92,7 @@ export default function MyTeamPage() {
   }, [searchParams, router])
 
   // Fetch FPL bootstrap-static early (we use its deadline info to compute upcoming/latest GW)
-  const { data: fplBootstrap } = useQuery({
+  const { data: fplBootstrap, isLoading: isBootstrapLoading, isError: isBootstrapError } = useQuery({
     queryKey: ["fpl-bootstrap-static-lite"],
     queryFn: () => api.getFplBootstrapStatic(),
     enabled: !!teamId,
@@ -181,21 +181,10 @@ export default function MyTeamPage() {
     refetchOnWindowFocus: false,
     staleTime: 30000,
     gcTime: 0,
-    placeholderData: {
-      season,
-      gameweek: selectedGameweek,
-      total_points: 0,
-      expected_points: 0,
-      squad_value: 0,
-      bank: 100,
-      players: [],
-      captain_id: null,
-      vice_captain_id: null,
-      xg_score: 0,
-      risk_score: 0.5,
-      fixture_difficulty: 3.0,
-    },
-    // Don't treat network errors as errors if we have placeholder data
+    // Keep previous data during GW switching (so the UI doesn't flicker),
+    // but do NOT show fake placeholder data on first load.
+    placeholderData: (prev) => prev,
+    // Don't hard-fail the page on errors (we show a warning banner instead)
     throwOnError: false,
   })
 
@@ -394,13 +383,25 @@ export default function MyTeamPage() {
   }
 
   // Show loading when initially loading or switching gameweeks
-  if ((isLoading && !teamData) || isSwitchingGameweek) {
+  const shouldBlockInitialRender =
+    !!teamId &&
+    !isBootstrapError &&
+    ((isBootstrapLoading && !fplBootstrap) || (isLoading && !teamData))
+
+  if (shouldBlockInitialRender || isSwitchingGameweek) {
     return (
       <div className="min-h-screen relative overflow-hidden bg-black">
         {BackgroundVideo}
         <div className="relative container mx-auto px-4 py-10 max-w-6xl z-10">
           <div className="flex items-center justify-center min-h-[60vh]">
-            <Loading size="lg" text={isSwitchingGameweek ? `Loading Gameweek ${selectedGameweek || uiLatestGw}...` : "Loading your team..."} />
+            <Loading
+              size="lg"
+              text={
+                isSwitchingGameweek
+                  ? `Loading Gameweek ${selectedGameweek || uiLatestGw}...`
+                  : "Loading your team..."
+              }
+            />
           </div>
         </div>
       </div>

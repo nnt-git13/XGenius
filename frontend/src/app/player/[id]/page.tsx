@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useMemo } from "react"
+import React, { useMemo, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { motion } from "framer-motion"
@@ -20,6 +20,15 @@ export default function PlayerProfilePage() {
   const searchParams = useSearchParams()
   const playerId = params.id as string
   const fromPage = searchParams.get('from') || 'team' // Default to 'team' if not specified
+
+  // Background image behavior:
+  // - If `public/backgrounds/{playerId}.jpg` exists, use it
+  // - Else fallback to `public/backgrounds/generic.jpg`
+  // - If neither exists, just use the gradient background
+  //
+  // IMPORTANT: hooks must not be conditional; keep these at the top-level of the component.
+  const [bgIdx, setBgIdx] = useState(0)
+  const [baseBgHidden, setBaseBgHidden] = useState(false)
 
   // Fetch player data from FPL API bootstrap-static
   const { data: playerData, isLoading, error } = useQuery({
@@ -118,9 +127,52 @@ export default function PlayerProfilePage() {
     )
   }
 
+  // TypeScript safety: by here we expect playerData to be present.
+  if (!playerData) return null
+
+  const bgCandidates = [
+    `/backgrounds/${playerData.id}.jpg`,
+    `/backgrounds/${playerData.id}.jpeg`,
+    `/backgrounds/${playerData.id}.png`,
+    `/backgrounds/${playerData.id}.webp`,
+    `/backgrounds/${playerData.id}.avif`,
+    `/backgrounds/generic.jpg`,
+    `/backgrounds/generic.jpeg`,
+    `/backgrounds/generic.png`,
+    `/backgrounds/generic.webp`,
+    `/backgrounds/generic.avif`,
+  ]
+  const bgUrl = bgCandidates[bgIdx] || null
+
   return (
     <div className="min-h-screen bg-black">
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        {/* Base texture layer (always below player photo). */}
+        {!baseBgHidden && (
+          <img
+            src="/backgrounds/background.png"
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover opacity-18"
+            onError={() => setBaseBgHidden(true)}
+          />
+        )}
+
+        {/* Background image (optional, auto-fallback) */}
+        {bgUrl ? (
+          <img
+            src={bgUrl}
+            alt=""
+            // Keep the player fully visible: no cropping, slightly reduced scale.
+            className="absolute inset-0 w-full h-full object-contain object-center opacity-100 scale-[0.84]"
+            onError={() => setBgIdx((i) => i + 1)}
+          />
+        ) : null}
+        {/* Edge fade for non-cover images (prevents harsh letterbox edges) */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0)_0%,rgba(0,0,0,0.35)_55%,rgba(0,0,0,0.75)_100%)]" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/35 via-transparent to-black/35" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/45" />
+        {/* Darken for readability (kept lighter since the player photo is now fully opaque) */}
+        <div className="absolute inset-0 bg-black/35" />
         <div className="absolute inset-0 bg-gradient-premier opacity-10" />
       </div>
 

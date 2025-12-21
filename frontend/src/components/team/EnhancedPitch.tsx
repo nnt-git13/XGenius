@@ -48,9 +48,11 @@ export const EnhancedPitch: React.FC<EnhancedPitchProps> = ({
       if (count <= 1) return [50]
       
       // Calculate spacing between players (equal spacing)
-      // Use safe margins: keep players within 12% to 88% of container
-      const minMargin = 12
-      const maxMargin = 88
+      // Use safe margins, but widen for 5-player lines (MID in 3-5-2 etc.)
+      // to avoid PlayerChip text overlap.
+      // For 5-player lines, keep them wide but prevent edge clipping.
+      const minMargin = count >= 5 ? 3 :3
+      const maxMargin = count >= 5 ? 97 : 97
       const usableWidth = maxMargin - minMargin // 76% usable width
       
       // Equal spacing between players
@@ -236,31 +238,35 @@ export const EnhancedPitch: React.FC<EnhancedPitchProps> = ({
         const positionPlayers = playersByPosition[position as keyof typeof playersByPosition] || []
         const totalPlayers = positions.length
         
-        // Calculate positions: compress lines with more players, spread out lines with fewer
-        // More players = tighter spacing, fewer players = wider spacing
-          // Shifted further left (38% instead of 50% center)
-          const getPlayerLeft = (index: number): string => {
-            const centerX = 38 // Shift center point further left
-            if (totalPlayers === 1) return `${centerX}%` // Single player (GK) centered at 38%
-          
+        // Default spacing (original behavior): use a slightly left-shifted center and compressed widths.
+        // We only override this for the 5-MID line to spread them wider and avoid text overlap.
+        const getPlayerLeft = (index: number): string => {
+          const centerX = 38
+          if (totalPlayers === 1) return `${centerX}%`
+
           // Dynamic spacing based on player count:
-          // - 2 players: use 30% of width (closer together for forwards)
-          // - 3 players: use 65% of width
-          // - 4 players: use 70% of width
-          // - 5 players: use 75% of width (compressed)
-          const widthMultiplier = totalPlayers === 2 
-            ? 0.30  // Forwards closer together
-            : Math.min(0.75, 0.50 + (totalPlayers - 2) * 0.05)
-          const totalWidth = widthMultiplier * 100 // Total width to use
-          
-          // Calculate spacing between players within that width
+          // - 2 players: closer together
+          // - 3/4/5 players: progressively wider, capped
+          const widthMultiplier =
+            totalPlayers === 2 ? 0.30 : Math.min(0.75, 0.50 + (totalPlayers - 2) * 0.05)
+          const totalWidth = widthMultiplier * 100
           const spacing = totalPlayers > 1 ? totalWidth / (totalPlayers - 1) : 0
-          
-          // Center the group: start position = centerX - (totalWidth / 2)
-          const start = centerX - (totalWidth / 2)
-          const centerIndex = (totalPlayers - 1) / 2 // Center index
+
+          const centerIndex = (totalPlayers - 1) / 2
           const offsetFromCenter = (index - centerIndex) * spacing
-          
+          return `calc(${centerX}% + ${offsetFromCenter}%)`
+        }
+
+        // Special-case the 5-midfield line:
+        // - Center it exactly where other lines are centered (centerX=38)
+        // - Spread it wider than the default (to avoid text overlap)
+        // - Keep it on-screen (avoid clipping on the right)
+        const getMid5Left = (index: number): string => {
+          const centerX = 38
+          const totalWidth = 75 // percent of container width used by the whole line
+          const spacing = totalWidth / 4 // 5 players => 4 gaps
+          const centerIndex = 2
+          const offsetFromCenter = (index - centerIndex) * spacing
           return `calc(${centerX}% + ${offsetFromCenter}%)`
         }
         
@@ -299,7 +305,8 @@ export const EnhancedPitch: React.FC<EnhancedPitchProps> = ({
                   }}
                   className="absolute"
                   style={{
-                    left: getPlayerLeft(index),
+                    // Only widen the 5-midfield line; keep the rest as the original layout.
+                    left: position === "MID" && totalPlayers === 5 ? getMid5Left(index) : getPlayerLeft(index),
                     transform: "translateX(-50%)",
                     perspective: "1000px",
                     transformStyle: "preserve-3d",
