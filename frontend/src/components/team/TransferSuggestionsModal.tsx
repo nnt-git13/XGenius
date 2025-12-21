@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/Modal"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { PlayerDetail } from "@/types/team"
+import { useWishlistStore } from "@/store/useWishlistStore"
 
 type Props = {
   isOpen: boolean
@@ -39,6 +40,7 @@ export function TransferSuggestionsModal({
   onSelectInPlayer,
 }: Props) {
   const [q, setQ] = useState("")
+  const wishlistItems = useWishlistStore((s) => s.items)
 
   const taken = useMemo(() => new Set(squadPlayers.map((p) => p.id)), [squadPlayers])
   const maxBudget = useMemo(() => {
@@ -60,6 +62,9 @@ export function TransferSuggestionsModal({
 
     const elementType = _posToElementType(outPlayer.position)
     const ql = q.trim().toLowerCase()
+    const wishedSet = new Set(
+      wishlistItems.filter((x) => x.position === outPlayer.position).map((x) => x.id),
+    )
 
     const teamsById = new Map<number, any>((data.teams || []).map((t: any) => [t.id, t]))
 
@@ -127,9 +132,15 @@ export function TransferSuggestionsModal({
       })
     }
 
-    mapped.sort((a, b) => b.ai_score - a.ai_score)
+    // Pin wishlisted players (same position) to the top, then rank by AI score.
+    mapped.sort((a, b) => {
+      const aw = wishedSet.has(a.id) ? 1 : 0
+      const bw = wishedSet.has(b.id) ? 1 : 0
+      if (aw !== bw) return bw - aw
+      return b.ai_score - a.ai_score
+    })
     return mapped.slice(0, 40)
-  }, [data, outPlayer, taken, maxBudget, q])
+  }, [data, outPlayer, taken, maxBudget, q, wishlistItems])
 
   const canRevert = useMemo(() => {
     if (!outPlayer || !revertPlayer) return false

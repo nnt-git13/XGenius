@@ -1,46 +1,37 @@
 "use client"
 
 import { create } from "zustand"
-import { persist } from "zustand/middleware"
+import { createJSONStorage, persist } from "zustand/middleware"
 
-interface AppState {
-  // User preferences
+type AppState = {
+  /** FPL Entry ID (aka Team ID). */
   teamId: number | null
-  season: string
-  
-  // UI state
-  theme: "dark" | "light"
-  
-  // Squad state
-  currentSquad: any[] | null
-  
-  // Actions
-  setTeamId: (id: number | null) => void
-  setSeason: (season: string) => void
-  setTheme: (theme: "dark" | "light") => void
-  setCurrentSquad: (squad: any[] | null) => void
+  setTeamId: (teamId: number | null) => void
+}
+
+// Next.js safety: provide a no-op storage during SSR so importing this module never crashes.
+const noopStorage: Storage = {
+  getItem: (_key: string) => null,
+  setItem: (_key: string, _value: string) => {},
+  removeItem: (_key: string) => {},
+  clear: () => {},
+  key: (_index: number) => null,
+  get length() {
+    return 0
+  },
 }
 
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       teamId: null,
-      season: "2024-25",
-      theme: "dark",
-      currentSquad: null,
-      
-      setTeamId: (id) => set({ teamId: id }),
-      setSeason: (season) => set({ season }),
-      setTheme: (theme) => set({ theme }),
-      setCurrentSquad: (squad) => set({ currentSquad: squad }),
+      setTeamId: (teamId) => set({ teamId }),
     }),
     {
-      name: "xgenius-storage",
-    }
-  )
+      name: "xgenius-app-v1",
+      storage: createJSONStorage(() => (typeof window !== "undefined" ? window.localStorage : noopStorage)),
+      version: 1,
+    },
+  ),
 )
-
-
-
-
 
