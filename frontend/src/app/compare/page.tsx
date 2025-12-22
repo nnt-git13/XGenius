@@ -1,193 +1,342 @@
 "use client"
 
-import React, { useState } from "react"
-import { motion } from "framer-motion"
-import { Users, TrendingUp, Target, X } from "lucide-react"
+import React, { useMemo, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
+import { ArrowLeft } from "lucide-react"
+import Link from "next/link"
+import { api } from "@/lib/api"
 import { Card } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { Loading } from "@/components/ui/Loading"
 import { TeamRadarChart } from "@/components/charts/RadarChart"
-import { cn } from "@/lib/utils"
+import { getTeamAbbreviation } from "@/utils/teamMapping"
 
-const mockPlayers = [
-  { id: 1, name: "Erling Haaland", position: "FWD", team: "MCI", price: 140, predicted: 8.5, form: 7.2, xG: 0.65, xA: 0.15 },
-  { id: 2, name: "Ollie Watkins", position: "FWD", team: "AVL", price: 85, predicted: 7.5, form: 8.2, xG: 0.52, xA: 0.20 },
-  { id: 3, name: "Alexander Isak", position: "FWD", team: "NEW", price: 75, predicted: 7.2, form: 6.8, xG: 0.48, xA: 0.12 },
-]
+type PlayerLite = {
+  id: number
+  name: string
+  position: string
+  team: string
+  team_short: string
+  price: number
+  total_points: number
+  points_per_game: number
+  form: number
+  selected_by_percent: number
+  influence: number
+  creativity: number
+  threat: number
+  ict_index: number
+}
+
+function toPctBucket(v: number, max: number) {
+  const x = max > 0 ? v / max : 0
+  return Math.round(Math.max(0, Math.min(1, x)) * 100)
+}
+
+function radarFor(p: PlayerLite | null) {
+  if (!p) return []
+  return [
+    { category: "Form", value: toPctBucket(p.form || 0, 10) },
+    { category: "Influence", value: toPctBucket(p.influence || 0, 100) },
+    { category: "Creativity", value: toPctBucket(p.creativity || 0, 100) },
+    { category: "Threat", value: toPctBucket(p.threat || 0, 100) },
+    { category: "ICT", value: toPctBucket(p.ict_index || 0, 30) },
+    { category: "Value", value: toPctBucket(((p.points_per_game || 0) / Math.max(1, p.price || 1)) / 2, 1) },
+  ]
+}
 
 export default function ComparePage() {
-  const [selectedPlayers, setSelectedPlayers] = useState<number[]>([])
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const a = searchParams.get("a")
+  const b = searchParams.get("b")
 
-  const togglePlayer = (id: number) => {
-    setSelectedPlayers((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : prev.length < 3 ? [...prev, id] : prev
+  const aId = a ? Number.parseInt(a, 10) : null
+  const bId = b ? Number.parseInt(b, 10) : null
+
+  // Background image behavior (same as player full stats).
+  const [baseBgHidden, setBaseBgHidden] = useState(false)
+  const [bgIdx, setBgIdx] = useState(0)
+  const [aImgIdx, setAImgIdx] = useState(0)
+  const [bImgIdx, setBImgIdx] = useState(0)
+
+  const { data: fplBootstrap, isLoading, error } = useQuery({
+    queryKey: ["fpl-bootstrap-static"],
+    queryFn: () => api.getFplBootstrapStatic(),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  })
+
+  const { players, playerA, playerB } = useMemo(() => {
+    const teams = (fplBootstrap?.teams || []) as any[]
+    const elements = (fplBootstrap?.elements || []) as any[]
+    const teamsById: Record<number, any> = {}
+    for (const t of teams) {
+      if (t?.id != null) teamsById[Number(t.id)] = t
+    }
+    const positionMap: { [key: number]: string } = { 1: "GK", 2: "DEF", 3: "MID", 4: "FWD" }
+
+    const mk = (el: any): PlayerLite => {
+      const team = teamsById[Number(el.team)]
+      return {
+        id: Number(el.id),
+        name: `${el.first_name} ${el.second_name}`,
+        position: positionMap[Number(el.element_type)] || "MID",
+        team: team?.name || "Unknown",
+        team_short: team?.short_name || "",
+        price: Number(el.now_cost || 0) / 10,
+        total_points: Number(el.total_points || 0),
+        points_per_game: Number.parseFloat(el.points_per_game) || 0,
+        form: Number.parseFloat(el.form) || 0,
+        selected_by_percent: Number.parseFloat(el.selected_by_percent) || 0,
+        influence: Number.parseFloat(el.influence) || 0,
+        creativity: Number.parseFloat(el.creativity) || 0,
+        threat: Number.parseFloat(el.threat) || 0,
+        ict_index: Number.parseFloat(el.ict_index) || 0,
+      }
+    }
+
+    const players: PlayerLite[] = elements.map(mk)
+    const byId: Record<number, PlayerLite> = {}
+    for (const p of players) byId[p.id] = p
+
+    return {
+      players,
+      playerA: aId != null ? byId[aId] || null : null,
+      playerB: bId != null ? byId[bId] || null : null,
+    }
+  }, [fplBootstrap, aId, bId])
+
+  const options = useMemo(() => {
+    // Keep it reasonably responsive: show only the first ~250 options in the datalist.
+    return players.slice(0, 250)
+  }, [players])
+
+  const bgUrl = useMemo(() => {
+    const id = playerA?.id ?? null
+    const candidates = [
+      id != null ? `/backgrounds/${id}.jpg` : null,
+      id != null ? `/backgrounds/${id}.jpeg` : null,
+      id != null ? `/backgrounds/${id}.png` : null,
+      id != null ? `/backgrounds/${id}.webp` : null,
+      id != null ? `/backgrounds/${id}.avif` : null,
+      `/backgrounds/generic.jpg`,
+      `/backgrounds/generic.jpeg`,
+      `/backgrounds/generic.png`,
+      `/backgrounds/generic.webp`,
+      `/backgrounds/generic.avif`,
+    ].filter(Boolean) as string[]
+    return candidates[bgIdx] || null
+  }, [playerA?.id, bgIdx])
+
+  const playerAImg = useMemo(() => {
+    const id = playerA?.id ?? null
+    if (id == null) return null
+    const candidates = [
+      `/backgrounds/${id}.jpg`,
+      `/backgrounds/${id}.jpeg`,
+      `/backgrounds/${id}.png`,
+      `/backgrounds/${id}.webp`,
+      `/backgrounds/${id}.avif`,
+    ]
+    return candidates[aImgIdx] || null
+  }, [playerA?.id, aImgIdx])
+
+  const playerBImg = useMemo(() => {
+    const id = playerB?.id ?? null
+    if (id == null) return null
+    const candidates = [
+      `/backgrounds/${id}.jpg`,
+      `/backgrounds/${id}.jpeg`,
+      `/backgrounds/${id}.png`,
+      `/backgrounds/${id}.webp`,
+      `/backgrounds/${id}.avif`,
+    ]
+    return candidates[bImgIdx] || null
+  }, [playerB?.id, bImgIdx])
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <Loading size="lg" text="Loading compare data..." />
+      </div>
     )
   }
 
-  const compareData = selectedPlayers.map((id) => {
-    const player = mockPlayers.find((p) => p.id === id)
-    if (!player) return null
-    return {
-      category: player.name,
-      value: player.predicted * 10,
-    }
-  }).filter(Boolean)
-
-  const selectedPlayerData = selectedPlayers
-    .map((id) => mockPlayers.find((p) => p.id === id))
-    .filter(Boolean)
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center max-w-md px-4">
+          <h1 className="text-2xl font-bold text-white mb-4">Unable to load compare</h1>
+          <p className="text-white/70 mb-6">{String((error as any)?.message || "Unknown error")}</p>
+          <Button onClick={() => router.back()}>Go Back</Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-black">
+      {/* Background (match full stats) */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        {!baseBgHidden && (
+          <img
+            src="/backgrounds/background.png"
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover opacity-18"
+            onError={() => setBaseBgHidden(true)}
+          />
+        )}
+
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0)_0%,rgba(0,0,0,0.35)_55%,rgba(0,0,0,0.75)_100%)]" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/35 via-transparent to-black/35" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/45" />
+        <div className="absolute inset-0 bg-black/35" />
         <div className="absolute inset-0 bg-gradient-premier opacity-10" />
       </div>
 
       <div className="relative container mx-auto px-4 py-8 max-w-7xl">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-3 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-500">
-              <Users className="h-8 w-8 text-white" />
-            </div>
+        <Link href="/team?gw=latest">
+          <Button variant="ghost" className="mb-6">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to My Team
+          </Button>
+        </Link>
+
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <h1 className="text-3xl font-bold text-white">Compare Players</h1>
+
+          <div className="flex items-center gap-3 flex-wrap">
             <div>
-              <h1 className="text-5xl font-bold gradient-text-premier">Compare Players</h1>
-              <p className="text-white/70">Compare up to 3 players side by side</p>
+              <label className="block text-xs text-white/60 mb-1">Player B (id or pick)</label>
+              <input
+                list="compare-player-options"
+                defaultValue={bId != null ? String(bId) : ""}
+                placeholder="e.g. 3 or start typing a name…"
+                className="w-[320px] max-w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm placeholder-white/40 focus:outline-none"
+                onChange={(e) => {
+                  const raw = e.target.value.trim()
+                  // Accept direct id input, or "Name (#id)" datalist format.
+                  const m = raw.match(/\(#(\d+)\)$/)
+                  const id = m ? Number.parseInt(m[1], 10) : Number.parseInt(raw, 10)
+                  if (Number.isFinite(id)) {
+                    const params = new URLSearchParams(searchParams.toString())
+                    if (aId != null) params.set("a", String(aId))
+                    params.set("b", String(id))
+                    router.push(`/compare?${params.toString()}`)
+                  }
+                }}
+              />
+              <datalist id="compare-player-options">
+                {options.map((p) => (
+                  <option key={p.id} value={`${p.name} (${p.team_short || getTeamAbbreviation(p.team)}) (#${p.id})`} />
+                ))}
+              </datalist>
             </div>
-          </div>
-        </motion.div>
-
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Player Selection */}
-          <div className="lg:col-span-1">
-            <Card variant="glass">
-              <h3 className="text-xl font-bold text-white mb-4">Select Players (max 3)</h3>
-              <div className="space-y-3">
-                {mockPlayers.map((player) => {
-                  const isSelected = selectedPlayers.includes(player.id)
-                  const isDisabled = !isSelected && selectedPlayers.length >= 3
-                  return (
-                    <button
-                      key={player.id}
-                      onClick={() => !isDisabled && togglePlayer(player.id)}
-                      disabled={isDisabled}
-                      className={cn(
-                        "w-full p-4 rounded-lg border-2 text-left transition-all",
-                        isSelected
-                          ? "border-fpl-green bg-fpl-green/10"
-                          : isDisabled
-                          ? "border-white/5 bg-white/5 opacity-50 cursor-not-allowed"
-                          : "border-white/10 bg-white/5 hover:border-white/20"
-                      )}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div>
-                          <p className="text-white font-semibold">{player.name}</p>
-                          <p className="text-white/70 text-sm">
-                            {player.position} • {player.team}
-                          </p>
-                        </div>
-                        {isSelected && (
-                          <div className="w-6 h-6 rounded-full bg-fpl-green flex items-center justify-center">
-                            <X className="h-4 w-4 text-black" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-white/70">£{(player.price / 10).toFixed(1)}M</span>
-                        <span className="text-fpl-green font-semibold">
-                          {player.predicted} pts
-                        </span>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </Card>
-          </div>
-
-          {/* Comparison View */}
-          <div className="lg:col-span-2">
-            {selectedPlayers.length > 0 ? (
-              <>
-                {/* Stats Table */}
-                <Card variant="glass" className="mb-6">
-                  <h3 className="text-xl font-bold text-white mb-4">Stats Comparison</h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-white/10">
-                          <th className="text-left py-3 px-4 text-white/70">Stat</th>
-                          {selectedPlayerData.map((player) => (
-                            <th key={player!.id} className="text-right py-3 px-4 text-white font-semibold">
-                              {player!.name.split(" ")[0]}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          { label: "Predicted Points", key: "predicted" },
-                          { label: "Form", key: "form" },
-                          { label: "Price", key: "price", format: (v: number) => `£${(v / 10).toFixed(1)}M` },
-                          { label: "xG per 90", key: "xG" },
-                          { label: "xA per 90", key: "xA" },
-                        ].map((stat) => (
-                          <tr key={stat.key} className="border-b border-white/5">
-                            <td className="py-3 px-4 text-white/70">{stat.label}</td>
-                            {selectedPlayerData.map((player: any) => (
-                              <td key={player.id} className="text-right py-3 px-4 text-white">
-                                {stat.format
-                                  ? stat.format(player[stat.key])
-                                  : typeof player[stat.key] === "number"
-                                  ? player[stat.key].toFixed(2)
-                                  : player[stat.key]}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-
-                {/* Radar Chart */}
-                {selectedPlayers.length >= 2 && (
-                  <Card variant="glass">
-                    <h3 className="text-xl font-bold text-white mb-4">Attribute Comparison</h3>
-                    <TeamRadarChart
-                      data={selectedPlayers.map((id) => {
-                        const player = mockPlayers.find((p) => p.id === id)!
-                        return {
-                          category: player.name.split(" ")[0],
-                          value: player.predicted * 10,
-                        }
-                      })}
-                    />
-                  </Card>
-                )}
-              </>
-            ) : (
-              <Card variant="glass" className="min-h-[400px] flex items-center justify-center">
-                <div className="text-center">
-                  <Users className="h-16 w-16 text-white/30 mx-auto mb-4" />
-                  <p className="text-white/70 text-lg">
-                    Select players to compare their stats and attributes
-                  </p>
-                </div>
-              </Card>
-            )}
           </div>
         </div>
+
+        {playerA == null ? (
+          <Card variant="glass">
+            <p className="text-white/70">
+              Open compare from a player page, or add query params like <span className="text-white font-semibold">?a=3&amp;b=1</span>.
+            </p>
+          </Card>
+        ) : (
+          <>
+            {/* Side-by-side player images */}
+            <Card variant="glass" className="mb-6 overflow-hidden">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="rounded-2xl bg-black/20 border border-white/10 p-4">
+                  <div className="text-xs text-white/60 font-semibold mb-2">Current player</div>
+                  <div className="text-lg font-bold text-white mb-3">{playerA?.name}</div>
+                  <div className="relative h-[260px] rounded-2xl bg-black/25 border border-white/10 overflow-hidden flex items-center justify-center">
+                    {playerAImg ? (
+                      <img
+                        src={playerAImg}
+                        alt={playerA?.name || "Player A"}
+                        className="absolute inset-0 w-full h-full object-contain object-center"
+                        onError={() => setAImgIdx((i) => i + 1)}
+                      />
+                    ) : (
+                      <div className="text-white/50 text-sm">Select Player A</div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-transparent to-black/25" />
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-black/20 border border-white/10 p-4">
+                  <div className="text-xs text-white/60 font-semibold mb-2">Compare to</div>
+                  <div className="text-lg font-bold text-white mb-3">{playerB?.name || "Select a player"}</div>
+                  <div className="relative h-[260px] rounded-2xl bg-black/25 border border-white/10 overflow-hidden flex items-center justify-center">
+                    {playerBImg ? (
+                      <img
+                        src={playerBImg}
+                        alt={playerB?.name || "Player B"}
+                        className="absolute inset-0 w-full h-full object-contain object-center"
+                        onError={() => setBImgIdx((i) => i + 1)}
+                      />
+                    ) : (
+                      <div className="text-white/50 text-sm">Pick Player B above</div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-transparent to-black/25" />
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <div className="grid lg:grid-cols-2 gap-6">
+              {[{ label: "Player A", p: playerA }, { label: "Player B", p: playerB }].map(({ label, p }) => (
+                <Card key={label} variant="glass">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="text-xs text-white/60 font-semibold">{label}</div>
+                    <div className="text-xl font-bold text-white mt-1">
+                      {p ? p.name : "Select a player"}
+                    </div>
+                    {p && (
+                      <div className="text-sm text-white/70 mt-1">
+                        {p.position} • {p.team} • £{p.price.toFixed(1)}m
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {p ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { k: "Total Points", v: String(p.total_points) },
+                        { k: "PPG", v: p.points_per_game.toFixed(2) },
+                        { k: "Form", v: p.form.toFixed(2) },
+                        { k: "Owned", v: `${p.selected_by_percent.toFixed(1)}%` },
+                        { k: "ICT", v: p.ict_index.toFixed(1) },
+                        { k: "Threat", v: p.threat.toFixed(1) },
+                      ].map((s) => (
+                        <div key={s.k} className="rounded-xl bg-white/5 border border-white/10 p-4">
+                          <div className="text-xs text-white/60">{s.k}</div>
+                          <div className="text-lg font-semibold text-white mt-1">{s.v}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-4">
+                      <TeamRadarChart data={radarFor(p)} title="Attributes" />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-white/50">Pick Player B from the box above.</p>
+                )}
+                </Card>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
 }
-
-
-
 
 

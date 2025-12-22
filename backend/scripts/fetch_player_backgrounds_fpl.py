@@ -185,14 +185,6 @@ async def main() -> int:
         ext = _ct_to_ext(ct)
         out_path = out_dir / f"{p.fpl_id}.{ext}"
         try:
-            # If overwriting, remove any old background for this id (any extension)
-            # so the frontend consistently picks up the newly downloaded official photo.
-            if args.overwrite and existing:
-                for old in existing:
-                    try:
-                        old.unlink()
-                    except Exception:
-                        pass
             out_path.write_bytes(data)
             downloaded += 1
             if args.verbose:

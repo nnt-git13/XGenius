@@ -18,6 +18,7 @@ import { EnhancedBenchView } from "@/components/team/EnhancedBenchView"
 import { PlayerDetailsPanel } from "@/components/team/PlayerDetailsPanel"
 import { CopilotPanel } from "@/components/team/CopilotPanel"
 import { TransferSuggestionsModal } from "@/components/team/TransferSuggestionsModal"
+import { WatchlistPanel } from "@/components/team/WatchlistPanel"
 import { cn } from "@/lib/utils"
 
 // Detect formation from player positions
@@ -48,6 +49,19 @@ export default function MyTeamPage() {
   const [transferOpen, setTransferOpen] = useState(false)
   const [transferOut, setTransferOut] = useState<PlayerDetail | null>(null)
   const [transferOriginalByIndex, setTransferOriginalByIndex] = useState<Record<number, PlayerDetail>>({})
+
+  // Restore scroll position when navigating back from player/compare pages.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const key = `xg:scroll:${window.location.pathname}${window.location.search}${window.location.hash}`
+    const v = sessionStorage.getItem(key)
+    if (v == null) return
+    sessionStorage.removeItem(key)
+    const y = Number(v)
+    if (!Number.isFinite(y)) return
+    // Wait a tick so layout is ready.
+    requestAnimationFrame(() => window.scrollTo({ top: y, behavior: "auto" }))
+  }, [])
 
   const BackgroundVideo = (
     <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
@@ -92,7 +106,7 @@ export default function MyTeamPage() {
   }, [searchParams, router])
 
   // Fetch FPL bootstrap-static early (we use its deadline info to compute upcoming/latest GW)
-  const { data: fplBootstrap, isLoading: isBootstrapLoading, isError: isBootstrapError } = useQuery({
+  const { data: fplBootstrap } = useQuery({
     queryKey: ["fpl-bootstrap-static-lite"],
     queryFn: () => api.getFplBootstrapStatic(),
     enabled: !!teamId,
@@ -181,10 +195,21 @@ export default function MyTeamPage() {
     refetchOnWindowFocus: false,
     staleTime: 30000,
     gcTime: 0,
-    // Keep previous data during GW switching (so the UI doesn't flicker),
-    // but do NOT show fake placeholder data on first load.
-    placeholderData: (prev) => prev,
-    // Don't hard-fail the page on errors (we show a warning banner instead)
+    placeholderData: {
+      season,
+      gameweek: selectedGameweek,
+      total_points: 0,
+      expected_points: 0,
+      squad_value: 0,
+      bank: 100,
+      players: [],
+      captain_id: null,
+      vice_captain_id: null,
+      xg_score: 0,
+      risk_score: 0.5,
+      fixture_difficulty: 3.0,
+    },
+    // Don't treat network errors as errors if we have placeholder data
     throwOnError: false,
   })
 
@@ -383,25 +408,13 @@ export default function MyTeamPage() {
   }
 
   // Show loading when initially loading or switching gameweeks
-  const shouldBlockInitialRender =
-    !!teamId &&
-    !isBootstrapError &&
-    ((isBootstrapLoading && !fplBootstrap) || (isLoading && !teamData))
-
-  if (shouldBlockInitialRender || isSwitchingGameweek) {
+  if ((isLoading && !teamData) || isSwitchingGameweek) {
     return (
       <div className="min-h-screen relative overflow-hidden bg-black">
         {BackgroundVideo}
         <div className="relative container mx-auto px-4 py-10 max-w-6xl z-10">
           <div className="flex items-center justify-center min-h-[60vh]">
-            <Loading
-              size="lg"
-              text={
-                isSwitchingGameweek
-                  ? `Loading Gameweek ${selectedGameweek || uiLatestGw}...`
-                  : "Loading your team..."
-              }
-            />
+            <Loading size="lg" text={isSwitchingGameweek ? `Loading Gameweek ${selectedGameweek || uiLatestGw}...` : "Loading your team..."} />
           </div>
         </div>
       </div>
@@ -686,6 +699,7 @@ export default function MyTeamPage() {
                 actionsDisabledLabel={isUpcomingGameweek ? "Choose transfers/captain for the upcoming deadline GW" : "Deadline passed — read-only"}
               />
 
+              <WatchlistPanel />
               <CopilotPanel selectedPlayer={selectedPlayer} />
             </div>
           </div>

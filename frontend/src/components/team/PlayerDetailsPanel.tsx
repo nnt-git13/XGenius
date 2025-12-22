@@ -3,6 +3,7 @@
 import React from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Activity, Crown, Target, TrendingUp, Sparkles } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { PlayerDetail } from "@/types/team"
 import { cn } from "@/lib/utils"
 import { getTeamAbbreviation } from "@/utils/teamMapping"
@@ -30,6 +31,17 @@ export function PlayerDetailsPanel({
   actionsDisabledLabel = "Unavailable for previous gameweeks",
   className,
 }: PlayerDetailsPanelProps) {
+  const router = useRouter()
+
+  const navigateToPlayer = (playerId: string) => {
+    if (typeof window === "undefined") return
+    const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`
+    try {
+      sessionStorage.setItem(`xg:scroll:${returnTo}`, String(window.scrollY || 0))
+    } catch {}
+    router.push(`/player/${playerId}?from=team&returnTo=${encodeURIComponent(returnTo)}`)
+  }
+
   return (
     <div className={cn("glass xg-noise rounded-2xl border border-white/10 shadow-xg-card overflow-hidden", className)}>
       <AnimatePresence mode="wait">
@@ -187,7 +199,7 @@ export function PlayerDetailsPanel({
                   // Player profile route expects FPL element id (bootstrap-static `elements[].id`)
                   const playerId = (player.fpl_id ?? player.id)?.toString()
                   if (playerId) {
-                    window.location.href = `/player/${playerId}?from=team`
+                    navigateToPlayer(playerId)
                   } else {
                     console.error('No valid player ID found', player)
                   }
