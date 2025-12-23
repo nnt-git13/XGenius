@@ -35,6 +35,7 @@ class PlayerDetail(PlayerBase):
     goals_scored: int = 0
     assists: int = 0
     clean_sheets: int = 0
+    expected_points: Optional[float] = Field(None, description="ML predicted points for next gameweek")
 
 
 class TeamEvaluationRequest(BaseModel):

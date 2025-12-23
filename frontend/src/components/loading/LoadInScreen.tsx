@@ -86,7 +86,7 @@ export const LoadInScreen: React.FC<LoadInScreenProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[100] overflow-hidden bg-gradient-to-br from-[#0a0a0a] via-[#1a1a1a] to-[#0a0a0a]"
+      className="fixed inset-0 z-[9999] overflow-hidden bg-gradient-to-br from-[#0a0a0a] via-[#1a1a1a] to-[#0a0a0a]"
       style={{ backgroundColor: "#0a0a0a" }}
     >
       {/* Subtle noise texture overlay */}
