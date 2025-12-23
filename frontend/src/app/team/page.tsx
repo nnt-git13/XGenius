@@ -3,8 +3,8 @@
 import React, { useState, useMemo, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter, useSearchParams } from "next/navigation"
-import { motion } from "framer-motion"
-import { AlertCircle, Target, TrendingUp, Settings, ChevronLeft, ChevronRight } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { AlertCircle, Target, TrendingUp, Settings, ChevronLeft, ChevronRight, ClipboardPaste, X } from "lucide-react"
 import { api } from "@/lib/api"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { AnimatedButton } from "@/components/ui/AnimatedButton"
@@ -20,6 +20,7 @@ import { CopilotPanel } from "@/components/team/CopilotPanel"
 import { TransferSuggestionsModal } from "@/components/team/TransferSuggestionsModal"
 import { WatchlistPanel } from "@/components/team/WatchlistPanel"
 import { cn } from "@/lib/utils"
+import toast from "react-hot-toast"
 
 // Detect formation from player positions
 const detectFormation = (players: PlayerDetail[]): Formation => {
@@ -49,6 +50,72 @@ export default function MyTeamPage() {
   const [transferOpen, setTransferOpen] = useState(false)
   const [transferOut, setTransferOut] = useState<PlayerDetail | null>(null)
   const [transferOriginalByIndex, setTransferOriginalByIndex] = useState<Record<number, PlayerDetail>>({})
+  
+  // Paste squad from optimizer
+  const [showPastePreview, setShowPastePreview] = useState(false)
+  const [pastedSquadData, setPastedSquadData] = useState<any>(null)
+
+  // Handle paste squad from clipboard
+  const handlePasteSquad = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      const data = JSON.parse(text)
+      
+      // Validate the pasted data
+      if (!data.version || !data.squad || !Array.isArray(data.squad) || data.squad.length !== 15) {
+        toast.error("Invalid squad data. Please copy a squad from the Optimizer.")
+        return
+      }
+      
+      setPastedSquadData(data)
+      setShowPastePreview(true)
+      toast.success(`Squad loaded: ${data.formation} formation with ${data.transfers_count} transfers`)
+    } catch (e) {
+      toast.error("Could not read squad from clipboard. Copy a squad from the Optimizer first.")
+    }
+  }
+
+  // Apply pasted squad
+  const applyPastedSquad = () => {
+    if (!pastedSquadData || !pastedSquadData.squad) return
+    
+    // Convert pasted players to PlayerDetail format
+    const newPlayers: PlayerDetail[] = pastedSquadData.squad.map((p: any) => ({
+      id: p.id,
+      fpl_id: p.id,
+      name: p.name,
+      position: p.position as "GK" | "DEF" | "MID" | "FWD",
+      team: p.team,
+      team_short_name: p.team?.slice(0, 3).toUpperCase() || "UNK",
+      price: p.price,
+      status: "a",
+      is_starting: p.is_starting_xi,
+      is_captain: p.is_captain,
+      is_vice_captain: p.is_vice_captain,
+      total_points: 0,
+      goals_scored: 0,
+      assists: 0,
+      clean_sheets: 0,
+    }))
+    
+    // Find captain and vice captain
+    const captainPlayer = newPlayers.find(p => p.is_captain)
+    const viceCaptainPlayer = newPlayers.find(p => p.is_vice_captain)
+    
+    // Set local state
+    setLocalPlayers(newPlayers)
+    if (captainPlayer) setLocalCaptainId(captainPlayer.id)
+    if (viceCaptainPlayer) setLocalViceCaptainId(viceCaptainPlayer.id)
+    
+    // Set formation
+    const formationName = pastedSquadData.formation
+    const formation = FORMATIONS.find(f => f.name === formationName)
+    if (formation) setSelectedFormation(formation)
+    
+    setShowPastePreview(false)
+    setPastedSquadData(null)
+    toast.success("Squad applied! Review the changes and save when ready.")
+  }
 
   // Restore scroll position when navigating back from player/compare pages.
   useEffect(() => {
@@ -626,6 +693,16 @@ export default function MyTeamPage() {
                         This is a preview of your team for the next gameweek. Click players to transfer them in or out.
                       </p>
                     </div>
+                    {/* Paste Squad Button */}
+                    <button
+                      onClick={handlePasteSquad}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 border border-white/20 
+                                 hover:bg-white/20 transition-colors text-white/80 hover:text-white"
+                      title="Paste squad from Optimizer"
+                    >
+                      <ClipboardPaste className="h-4 w-4" />
+                      <span className="text-sm font-medium">Paste Squad</span>
+                    </button>
                   </div>
                 </GlassCard>
               )}
@@ -732,6 +809,82 @@ export default function MyTeamPage() {
           setTransferOut(null)
         }}
       />
+
+      {/* Paste Squad Preview Modal */}
+      <AnimatePresence>
+        {showPastePreview && pastedSquadData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowPastePreview(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-ai-darker rounded-2xl border border-white/20 p-6 max-w-lg w-full mx-4 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-bold text-white">Apply Optimized Squad?</h3>
+                <button
+                  onClick={() => setShowPastePreview(false)}
+                  className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  <X className="h-5 w-5 text-white/60" />
+                </button>
+              </div>
+
+              <div className="space-y-4 mb-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <div className="text-white/60 text-sm">Formation</div>
+                    <div className="text-xl font-bold text-ai-primary">{pastedSquadData.formation}</div>
+                  </div>
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <div className="text-white/60 text-sm">Transfers</div>
+                    <div className="text-xl font-bold text-white">{pastedSquadData.transfers_count}</div>
+                  </div>
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <div className="text-white/60 text-sm">Total Cost</div>
+                    <div className="text-xl font-bold text-white">£{pastedSquadData.total_cost?.toFixed(1)}m</div>
+                  </div>
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <div className="text-white/60 text-sm">Expected Pts</div>
+                    <div className="text-xl font-bold text-green-400">{pastedSquadData.effective_points?.toFixed(2)}</div>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-ai-primary/10 border border-ai-primary/30">
+                  <div className="text-white/80 text-sm">
+                    <strong className="text-ai-primary">Note:</strong> This will replace your current team preview with the optimized squad.
+                    You can still make further changes before confirming.
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowPastePreview(false)}
+                  className="flex-1 py-3 rounded-lg bg-white/10 border border-white/20 text-white font-medium
+                             hover:bg-white/20 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={applyPastedSquad}
+                  className="flex-1 py-3 rounded-lg bg-ai-primary text-black font-bold
+                             hover:bg-ai-primary/90 transition-colors"
+                >
+                  Apply Squad
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

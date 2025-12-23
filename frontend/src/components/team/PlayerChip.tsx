@@ -101,7 +101,7 @@ export function PlayerChip({
             <span className="text-white/30">•</span>
             <span>£{player.price.toFixed(1)}m</span>
             <span className="text-white/30">•</span>
-            <span>{Number(displayPoints).toFixed(0)} pts</span>
+            <span>{Number(displayPoints).toFixed(1)} pts</span>
           </div>
         </div>
 

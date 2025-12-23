@@ -1,4 +1,5 @@
 import axios from "axios";
+import { useLoadingStore } from "@/store/useLoadingStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -12,42 +13,66 @@ const client = axios.create({
   timeout: 60000, // 60 second timeout (optimization can take longer)
 });
 
-// Add request interceptor for debugging (only in dev)
-if (process.env.NODE_ENV === 'development') {
-  client.interceptors.request.use(
-    (config) => {
-      console.log("API Request:", config.method?.toUpperCase(), config.url);
-      return config;
-    },
-    (error) => {
-      console.error("API Request Error:", error);
-      return Promise.reject(error);
-    }
-  );
+// Generate unique request ID
+let requestCounter = 0;
+const generateRequestId = () => `req_${Date.now()}_${++requestCounter}`;
 
-  // Add response interceptor for debugging
-  client.interceptors.response.use(
-    (response) => {
+// Add request interceptor to track loading state
+client.interceptors.request.use(
+  (config) => {
+    const requestId = generateRequestId();
+    (config as any).requestId = requestId;
+    useLoadingStore.getState().startLoading(requestId);
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log("API Request:", config.method?.toUpperCase(), config.url);
+    }
+    return config;
+  },
+  (error) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.error("API Request Error:", error);
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor to track loading state
+client.interceptors.response.use(
+  (response) => {
+    const requestId = (response.config as any)?.requestId;
+    if (requestId) {
+      useLoadingStore.getState().stopLoading(requestId);
+    }
+    
+    if (process.env.NODE_ENV === 'development') {
       console.log("API Response:", response.status, response.config.url);
-      return response;
-    },
-    (error) => {
-      // Only log non-network errors in detail
+    }
+    return response;
+  },
+  (error) => {
+    const requestId = (error.config as any)?.requestId;
+    if (requestId) {
+      useLoadingStore.getState().stopLoading(requestId);
+    }
+    
+    // Only log non-network errors in detail
+    if (process.env.NODE_ENV === 'development') {
       if (error.code !== 'ERR_NETWORK' && error.code !== 'ERR_CONNECTION_REFUSED') {
         console.error("API Response Error:", error.message, error.response?.status, error.config?.url);
       }
-      // Extract error message from response if available
-      if (error.response?.data?.detail) {
-        error.message = error.response.data.detail;
-      } else if (error.response?.data?.message) {
-        error.message = error.response.data.message;
-      } else if (error.response?.statusText) {
-        error.message = `${error.response.status}: ${error.response.statusText}`;
-      }
-      return Promise.reject(error);
     }
-  );
-}
+    // Extract error message from response if available
+    if (error.response?.data?.detail) {
+      error.message = error.response.data.detail;
+    } else if (error.response?.data?.message) {
+      error.message = error.response.data.message;
+    } else if (error.response?.statusText) {
+      error.message = `${error.response.status}: ${error.response.statusText}`;
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const api = {
   // Dashboard
@@ -163,6 +188,9 @@ export const api = {
     lock_players?: number[];
     chip?: string;
     horizon_gw?: number;
+    current_squad?: number[];
+    free_transfers?: number;
+    target_gameweek?: number | null;
   }) {
     // Use longer timeout for optimization (60 seconds)
     const response = await client.post("/optimize/squad", data, {
@@ -194,8 +222,10 @@ export const api = {
     }
   ) {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const requestId = generateRequestId();
     
     try {
+      useLoadingStore.getState().startLoading(requestId);
       const response = await fetch(`${apiUrl}/api/v1/copilot/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -213,8 +243,11 @@ export const api = {
         throw new Error(`Copilot endpoint failed: ${response.status}`);
       }
       
-      return response.json();
+      const data = await response.json();
+      useLoadingStore.getState().stopLoading(requestId);
+      return data;
     } catch (err) {
+      useLoadingStore.getState().stopLoading(requestId);
       console.error("Copilot error:", err);
       throw err;
     }

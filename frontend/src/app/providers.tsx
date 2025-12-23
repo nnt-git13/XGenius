@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Toaster } from "react-hot-toast"
 import { DndProvider } from "react-dnd"
 import { HTML5Backend } from "react-dnd-html5-backend"
+import { GlobalLoadingOverlay } from "@/components/ui/GlobalLoadingOverlay"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,6 +22,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <DndProvider backend={HTML5Backend}>
         {children}
+        <GlobalLoadingOverlay />
         <Toaster
           position="top-right"
           toastOptions={{

@@ -186,6 +186,35 @@ class TeamEvaluator:
                         captain_id: Optional[int] = None
                         vice_captain_id: Optional[int] = None
                         expected_points_total = 0.0
+                        
+                        # Batch fetch ML predictions for all players at once (more efficient)
+                        element_ids_for_pred = [pick.get("element") for pick in picks_sorted if pick.get("element")]
+                        element_id_to_db_id = {}
+                        pred_lookup = {}
+                        try:
+                            from app.services.ml.predict import predict_points
+                            from app.models.player import Player
+                            
+                            if element_ids_for_pred:
+                                # Batch query all players by fpl_id
+                                db_players = self.db.query(Player).filter(Player.fpl_id.in_(element_ids_for_pred)).all()
+                                element_id_to_db_id = {p.fpl_id: p.id for p in db_players}
+                                
+                                # Batch predict for all players
+                                db_player_ids = list(element_id_to_db_id.values())
+                                if db_player_ids:
+                                    predictions = predict_points(
+                                        self.db,
+                                        db_player_ids,
+                                        season,
+                                        gameweek or 1,
+                                        1  # horizon
+                                    )
+                                    # Create lookup: db_id -> predicted_points
+                                    pred_lookup = {p["player_id"]: float(p.get("predicted_points", 0.0) or 0.0) 
+                                                  for p in predictions.get("predictions", [])}
+                        except Exception as e:
+                            logger.warning(f"Failed to batch fetch ML predictions: {e}")
 
                         for pick in picks_sorted:
                             element_id = pick.get("element")
@@ -237,20 +266,30 @@ class TeamEvaluator:
                             
                             gw_points = gw_points_raw * multiplier
 
-                            # Expected points (projected) from bootstrap ep_this; multiply for captain/triple.
-                            ep_this = el.get("ep_this")
-                            try:
-                                ep_this_f = float(ep_this) if ep_this is not None else 0.0
-                            except Exception:
-                                ep_this_f = 0.0
+                            # Get ML predicted points (from batch lookup, fallback to FPL ep_this)
+                            predicted_points = 0.0
+                            db_id = element_id_to_db_id.get(element_id)
+                            if db_id and db_id in pred_lookup:
+                                predicted_points = pred_lookup[db_id]
+                            else:
+                                # Fallback to FPL ep_this
+                                ep_this = el.get("ep_this")
+                                try:
+                                    predicted_points = float(ep_this) if ep_this is not None else 0.0
+                                except Exception:
+                                    predicted_points = 0.0
+                            
                             if is_starting:
-                                expected_points_total += ep_this_f * multiplier
+                                expected_points_total += predicted_points * multiplier
 
                             if is_captain:
                                 captain_id = element_id
                             if is_vice_captain:
                                 vice_captain_id = element_id
 
+                            # Get ML prediction for this player (for expected_points field)
+                            player_predicted_points = predicted_points
+                            
                             players_data.append(PlayerDetail(
                                 # Use FPL element id as stable identifier for UI selection
                                 id=int(element_id),
@@ -274,6 +313,7 @@ class TeamEvaluator:
                                 goals_scored=int(el.get("goals_scored") or 0),
                                 assists=int(el.get("assists") or 0),
                                 clean_sheets=int(el.get("clean_sheets") or 0),
+                                expected_points=player_predicted_points,  # ML predicted points
                             ))
 
                         # Team-level points/value/rank from entry_history (authoritative)
