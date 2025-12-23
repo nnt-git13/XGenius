@@ -2,21 +2,34 @@
 
 import React from "react"
 import { motion } from "framer-motion"
-import { PlayerShirt3D } from "./PlayerShirt3D"
+import { PlayerChip } from "./PlayerChip"
 import { PlayerDetail } from "@/types/team"
 
 interface EnhancedBenchViewProps {
   players: PlayerDetail[]
   captainId?: number | null
   viceCaptainId?: number | null
+  highlightedPlayerIds?: Set<number>
   onPlayerClick?: (player: PlayerDetail) => void
   className?: string
+}
+
+// Map position to bench label
+const getBenchLabel = (position: string, index: number): string => {
+  const positionMap: Record<string, string> = {
+    "GK": "GKP",
+    "DEF": "DEF",
+    "MID": "MID",
+    "FWD": "FWD",
+  }
+  return positionMap[position] || `${index + 1}.`
 }
 
 export const EnhancedBenchView: React.FC<EnhancedBenchViewProps> = ({
   players,
   captainId,
   viceCaptainId,
+  highlightedPlayerIds,
   onPlayerClick,
   className,
 }) => {
@@ -32,12 +45,11 @@ export const EnhancedBenchView: React.FC<EnhancedBenchViewProps> = ({
         </h3>
       </div>
       
-      {/* Bench with 3D grass background */}
-      <div className="relative rounded-xl overflow-hidden">
+      {/* Bench with realistic styling */}
+      <div className="relative rounded-xl overflow-hidden bg-gradient-to-b from-green-800 via-green-700 to-green-800 border border-green-600/30">
         {/* Bench grass background */}
-        <div className="absolute inset-0 bg-gradient-to-r from-green-800 via-green-700 to-green-800 opacity-60" />
         <div 
-          className="absolute inset-0 opacity-40"
+          className="absolute inset-0 opacity-30"
           style={{
             backgroundImage: `
               repeating-linear-gradient(
@@ -47,52 +59,55 @@ export const EnhancedBenchView: React.FC<EnhancedBenchViewProps> = ({
                 rgba(22, 163, 74, 0.3) 2px
               )
             `,
-            backgroundSize: "3px 3px",
+            backgroundSize: "4px 4px",
           }}
         />
         
-        {/* Bench seats effect */}
-        <div className="absolute inset-0 border-t-4 border-white/20" />
+        {/* Bench separator line */}
+        <div className="absolute top-0 left-0 right-0 h-px bg-white/20" />
         
-        <div className="relative grid grid-cols-4 gap-4 p-4">
-          {benchSlots.map((player, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, x: -30, rotateY: -90 }}
-              animate={{ opacity: 1, x: 0, rotateY: 0 }}
-              transition={{ 
-                delay: index * 0.15,
-                type: "spring",
-                stiffness: 150,
-                damping: 12,
-              }}
-              className="flex justify-center"
-            >
-              {player ? (
-                <div className="relative">
-                  {/* Bench number indicator */}
-                  <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 z-20 bg-white/20 backdrop-blur-sm px-2 py-0.5 rounded-full border border-white/30">
-                    <span className="text-white text-[10px] font-bold">{index + 1}</span>
-                  </div>
-                  <PlayerShirt3D
-                    player={player}
-                    isBench={true}
-                    isCaptain={player.id === captainId}
-                    isViceCaptain={player.id === viceCaptainId}
-                    onClick={() => onPlayerClick?.(player)}
-                    className="opacity-90 hover:opacity-100 transition-opacity"
-                  />
+        <div className="relative grid grid-cols-4 gap-3 p-4">
+          {benchSlots.map((player, index) => {
+            const label = player ? getBenchLabel(player.position, index) : `${index + 1}.`
+            
+            return (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ 
+                  delay: index * 0.1,
+                  type: "spring",
+                  stiffness: 200,
+                  damping: 15,
+                }}
+                className="flex flex-col items-center"
+              >
+                {/* Position label */}
+                <div className="mb-2 bg-gray-800/80 backdrop-blur-sm px-2 py-0.5 rounded border border-gray-600/50 shadow-sm">
+                  <span className="text-white text-[10px] font-bold">{label}</span>
                 </div>
-              ) : (
-                <div className="relative w-20 h-28 rounded-lg bg-white/5 border-2 border-dashed border-white/20 flex flex-col items-center justify-center backdrop-blur-sm">
-                  <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 bg-white/20 backdrop-blur-sm px-2 py-0.5 rounded-full border border-white/30">
-                    <span className="text-white text-[10px] font-bold">{index + 1}</span>
+                
+                {player ? (
+                  <div className="w-full flex justify-center">
+                    <PlayerChip
+                      player={player}
+                      isBench={true}
+                      isCaptain={player.id === captainId}
+                      isViceCaptain={player.id === viceCaptainId}
+                      transferBadge={highlightedPlayerIds?.has(player.id) ? "in" : null}
+                      onSelect={() => onPlayerClick?.(player)}
+                      className="opacity-90 hover:opacity-100 transition-opacity"
+                    />
                   </div>
-                  <span className="text-white/30 text-xs mt-4">Bench {index + 1}</span>
-                </div>
-              )}
-            </motion.div>
-          ))}
+                ) : (
+                  <div className="w-20 h-28 rounded-lg bg-white/5 border-2 border-dashed border-white/20 flex items-center justify-center backdrop-blur-sm">
+                    <span className="text-white/20 text-xs">Empty</span>
+                  </div>
+                )}
+              </motion.div>
+            )
+          })}
         </div>
       </div>
     </div>

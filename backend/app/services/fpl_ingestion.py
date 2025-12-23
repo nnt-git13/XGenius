@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+from sqlalchemy import or_
 
 from app.services.fpl_api import FPLAPIService
 from app.models.player import Player
@@ -110,8 +111,21 @@ class FPLIngestionService:
                 logger.warning(f"Team {player_data['team']} not found for player {player_data.get('web_name')}")
                 continue
             
-            # Check if player exists
-            player = self.db.query(Player).filter(Player.fpl_code == player_data["code"]).first()
+            element_id = player_data.get("id")
+            code = player_data.get("code")
+
+            # Check if player exists (be defensive: older DBs sometimes stored element id in fpl_code)
+            player = (
+                self.db.query(Player)
+                .filter(
+                    or_(
+                        Player.fpl_id == element_id,
+                        Player.fpl_code == code,
+                        Player.fpl_code == element_id,
+                    )
+                )
+                .first()
+            )
             
             position = self.fpl_api.parse_position(player_data["element_type"])
             price = self.fpl_api.parse_price(player_data["now_cost"])
@@ -121,6 +135,7 @@ class FPLIngestionService:
             
             if not player:
                 player = Player(
+                    fpl_id=element_id,
                     fpl_code=player_data["code"],
                     name=f"{player_data.get('first_name', '')} {player_data.get('second_name', '')}".strip(),
                     first_name=player_data.get("first_name"),
@@ -150,6 +165,11 @@ class FPLIngestionService:
                 count += 1
             else:
                 # Update existing player
+                if element_id and not player.fpl_id:
+                    player.fpl_id = element_id
+                # Always keep fpl_code in sync with bootstrap "code"
+                if code:
+                    player.fpl_code = code
                 player.name = f"{player_data.get('first_name', '')} {player_data.get('second_name', '')}".strip()
                 player.first_name = player_data.get("first_name")
                 player.second_name = player_data.get("second_name")

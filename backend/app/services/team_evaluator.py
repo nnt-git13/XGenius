@@ -14,6 +14,44 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+def _pos_from_element_type(element_type: int) -> str:
+    return {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}.get(element_type, "MID")
+
+def _latest_gw_from_bootstrap(bootstrap_data: Dict[str, Any]) -> int:
+    """
+    Resolve the most appropriate "latest" gameweek from FPL bootstrap-static payload.
+
+    FPL bootstrap-static exposes `events` (list) with fields like:
+      - id
+      - is_current
+      - is_next
+      - finished
+
+    Strategy:
+      - If there is a current GW, use it.
+      - Else if there are finished GWs, use the max finished id.
+      - Else if there is a next GW, use max(1, next_id - 1).
+      - Else fallback to 1.
+    """
+    events = bootstrap_data.get("events") or []
+    try:
+        current = next((e.get("id") for e in events if e.get("is_current")), None)
+        if isinstance(current, int) and current > 0:
+            return current
+
+        finished_ids = [e.get("id") for e in events if e.get("finished") and isinstance(e.get("id"), int)]
+        if finished_ids:
+            return max(finished_ids)
+
+        next_id = next((e.get("id") for e in events if e.get("is_next")), None)
+        if isinstance(next_id, int) and next_id > 1:
+            return next_id - 1
+    except Exception:
+        # Defensive: never crash evaluation because bootstrap parsing is off
+        pass
+
+    return 1
+
 
 class TeamEvaluator:
     """Evaluates FPL teams."""
@@ -52,19 +90,8 @@ class TeamEvaluator:
                     # Get the latest gameweek from bootstrap-static
                     bootstrap_response = requests.get(f"{settings.FPL_API_BASE_URL}/bootstrap-static/", timeout=10)
                     bootstrap_data = bootstrap_response.json()
-                    current_event = bootstrap_data.get("current_event", 1)
-                    next_event = bootstrap_data.get("next_event")
-                    
-                    # If current_event is the same as next_event, it means the current gameweek hasn't started yet
-                    # In that case, we want to use the previous gameweek (current_event - 1)
-                    if next_event and next_event == current_event:
-                        # Current event is actually the next event (hasn't started), use previous
-                        gameweek = max(1, current_event - 1)
-                        logger.info(f"Current event {current_event} is the next event (not started), using previous gameweek: {gameweek}")
-                    else:
-                        # Current event is the active gameweek, use it
-                        gameweek = current_event
-                        logger.info(f"Using current active gameweek: {gameweek} (next_event: {next_event})")
+                    gameweek = _latest_gw_from_bootstrap(bootstrap_data)
+                    logger.info(f"Resolved latest gameweek from bootstrap-static: {gameweek}")
                 
                 # Fetch team picks - always try current gameweek first, only fallback if it truly has no picks
                 picks_response = None
@@ -87,8 +114,8 @@ class TeamEvaluator:
                     else:
                         # Current gameweek has no picks - might be set for next gameweek
                         # Check if there's a next_event that's different
-                        next_event = bootstrap_data.get("next_event", None)
-                        if next_event and next_event == gameweek:
+                        next_event = next((e.get("id") for e in (bootstrap_data.get("events") or []) if e.get("is_next")), None)
+                        if isinstance(next_event, int) and next_event == gameweek:
                             # Current gameweek is the "next" event (hasn't started), try previous
                             logger.info(f"Current gameweek {gameweek} is the next event (not started), trying previous gameweek {gameweek - 1}")
                             if gameweek > 1:
@@ -126,34 +153,180 @@ class TeamEvaluator:
                     logger.error(error_msg)
                 elif picks_response and picks_response.status_code == 200:
                     picks_data = picks_response.json()
-                    # Extract player element IDs (FPL codes) from picks
+                    # Extract player element IDs from picks
                     picks = picks_data.get("picks", [])
                     # Store picks data for later use (to determine starting XI vs bench)
                     picks_by_element = {pick.get("element"): pick for pick in picks if pick.get("element")}
-                    fpl_codes = [pick.get("element") for pick in picks if pick.get("element")]
-                    logger.info(f"Found {len(fpl_codes)} FPL element IDs in picks")
+                    element_ids = [pick.get("element") for pick in picks if pick.get("element")]
+                    logger.info(f"Found {len(element_ids)} FPL element IDs in picks")
+
+                    # Build a response directly from FPL bootstrap-static for accuracy (GW points, multipliers, order)
+                    # This avoids mismatches when the local DB is missing/behind on WeeklyScore/player mappings.
+                    try:
+                        if "bootstrap_data" not in locals():
+                            bootstrap_response = requests.get(f"{settings.FPL_API_BASE_URL}/bootstrap-static/", timeout=10)
+                            bootstrap_data = bootstrap_response.json()
+
+                        elements_by_id = {e.get("id"): e for e in (bootstrap_data.get("elements") or []) if e.get("id")}
+                        teams_by_id = {t.get("id"): t for t in (bootstrap_data.get("teams") or []) if t.get("id")}
+
+                        entry_history = picks_data.get("entry_history") or {}
+                        active_chip = picks_data.get("active_chip") or entry_history.get("active_chip")
+                        
+                        # Determine if this is a historical gameweek (not current)
+                        latest_gw = _latest_gw_from_bootstrap(bootstrap_data)
+                        # Only treat as "historical" if the requested GW is in the past.
+                        # Upcoming GWs (gameweek > latest_gw) should NOT trigger per-player element-summary calls.
+                        is_historical_gw = gameweek is not None and gameweek < latest_gw
+
+                        # Sort picks into FPL UI order: 1-11 starting XI, 12-15 bench
+                        picks_sorted = sorted(picks, key=lambda p: p.get("position", 99))
+
+                        players_data: List[PlayerDetail] = []
+                        captain_id: Optional[int] = None
+                        vice_captain_id: Optional[int] = None
+                        expected_points_total = 0.0
+
+                        for pick in picks_sorted:
+                            element_id = pick.get("element")
+                            if not element_id:
+                                continue
+
+                            el = elements_by_id.get(element_id)
+                            if not el:
+                                continue
+
+                            team_id_fpl = el.get("team")
+                            team_info = teams_by_id.get(team_id_fpl, {}) if team_id_fpl else {}
+
+                            element_type = int(el.get("element_type") or 3)
+                            position = _pos_from_element_type(element_type)
+                            price = float(el.get("now_cost") or 0) / 10.0
+
+                            multiplier = int(pick.get("multiplier") or 1)
+                            is_captain = bool(pick.get("is_captain"))
+                            is_vice_captain = bool(pick.get("is_vice_captain"))
+                            is_starting = (pick.get("position") or 99) <= 11
+
+                            # For historical gameweeks, fetch points from element history
+                            # For current/latest gameweek, use event_points from bootstrap-static
+                            gw_points_raw = 0.0
+                            if is_historical_gw and gameweek:
+                                # Historical gameweek - fetch from element summary
+                                try:
+                                    element_summary_url = f"{settings.FPL_API_BASE_URL}/element-summary/{element_id}/"
+                                    element_summary_response = requests.get(element_summary_url, timeout=5)
+                                    if element_summary_response.status_code == 200:
+                                        element_summary = element_summary_response.json()
+                                        history = element_summary.get("history", [])
+                                        # Find points for this specific gameweek
+                                        gw_history = next((h for h in history if h.get("round") == gameweek), None)
+                                        if gw_history:
+                                            gw_points_raw = float(gw_history.get("total_points") or 0)
+                                        else:
+                                            # Fallback: use event_points (will be 0 for past gameweeks)
+                                            gw_points_raw = float(el.get("event_points") or 0)
+                                    else:
+                                        gw_points_raw = float(el.get("event_points") or 0)
+                                except Exception as e:
+                                    logger.warning(f"Failed to fetch element summary for {element_id} GW {gameweek}: {str(e)}")
+                                    gw_points_raw = float(el.get("event_points") or 0)
+                            else:
+                                # Current/latest gameweek - use event_points from bootstrap-static
+                                gw_points_raw = float(el.get("event_points") or 0)
+                            
+                            gw_points = gw_points_raw * multiplier
+
+                            # Expected points (projected) from bootstrap ep_this; multiply for captain/triple.
+                            ep_this = el.get("ep_this")
+                            try:
+                                ep_this_f = float(ep_this) if ep_this is not None else 0.0
+                            except Exception:
+                                ep_this_f = 0.0
+                            if is_starting:
+                                expected_points_total += ep_this_f * multiplier
+
+                            if is_captain:
+                                captain_id = element_id
+                            if is_vice_captain:
+                                vice_captain_id = element_id
+
+                            players_data.append(PlayerDetail(
+                                # Use FPL element id as stable identifier for UI selection
+                                id=int(element_id),
+                                fpl_id=int(element_id),
+                                fpl_code=int(el.get("code")) if el.get("code") is not None else None,
+                                db_id=None,
+                                name=str(el.get("web_name") or f"{el.get('first_name','')} {el.get('second_name','')}".strip()),
+                                position=position,
+                                team=str(team_info.get("name") or "Unknown"),
+                                team_short_name=str(team_info.get("short_name") or None),
+                                team_fpl_code=int(team_id_fpl) if team_id_fpl else None,
+                                price=price,
+                                status=str(el.get("status") or "a"),
+                                is_starting=is_starting,
+                                is_captain=is_captain,
+                                is_vice_captain=is_vice_captain,
+                                multiplier=multiplier,
+                                gw_points_raw=gw_points_raw,
+                                gw_points=gw_points,
+                                total_points=float(el.get("total_points") or 0.0),  # season points from FPL
+                                goals_scored=int(el.get("goals_scored") or 0),
+                                assists=int(el.get("assists") or 0),
+                                clean_sheets=int(el.get("clean_sheets") or 0),
+                            ))
+
+                        # Team-level points/value/rank from entry_history (authoritative)
+                        gw_points_total = float(entry_history.get("points") or 0.0)
+                        overall_points = entry_history.get("total_points")
+                        gw_rank = entry_history.get("rank")
+                        transfers = entry_history.get("event_transfers")
+                        squad_value = float(entry_history.get("value") or 0) / 10.0
+                        bank = float(entry_history.get("bank") or 0) / 10.0
+
+                        risk_score = self._calculate_risk_score(players_data)
+                        fixture_difficulty = 3.0
+
+                        return TeamEvaluationResponse(
+                            season=season,
+                            gameweek=gameweek,
+                            overall_points=float(overall_points) if overall_points is not None else None,
+                            gw_rank=int(gw_rank) if isinstance(gw_rank, int) else None,
+                            transfers=int(transfers) if isinstance(transfers, int) else None,
+                            active_chip=str(active_chip) if active_chip else None,
+                            total_points=gw_points_total,
+                            expected_points=expected_points_total,
+                            risk_score=risk_score,
+                            fixture_difficulty=fixture_difficulty,
+                            squad_value=squad_value,
+                            bank=bank,
+                            players=players_data,
+                            captain_id=captain_id,
+                            vice_captain_id=vice_captain_id,
+                        )
+                    except Exception as e:
+                        logger.warning(f"FPL bootstrap-derived evaluation failed; falling back to DB mapping: {str(e)}", exc_info=True)
                     
-                    # Convert FPL codes to internal player IDs by matching fpl_code
-                    if fpl_codes:
-                        # First try matching by fpl_code
-                        players = self.db.query(Player).filter(Player.fpl_code.in_(fpl_codes)).all()
+                    # Convert FPL element IDs to internal player IDs by matching players.fpl_id
+                    if element_ids:
+                        players = self.db.query(Player).filter(Player.fpl_id.in_(element_ids)).all()
                         matched_ids = [p.id for p in players]
-                        logger.info(f"Matched {len(matched_ids)} players by fpl_code")
+                        logger.info(f"Matched {len(matched_ids)} players by fpl_id")
                         
                         # If we didn't match all players, try using bootstrap-static to get player names
-                        if len(matched_ids) < len(fpl_codes):
-                            logger.warning(f"Only matched {len(matched_ids)}/{len(fpl_codes)} players by fpl_code. Trying name-based fallback matching.")
+                        if len(matched_ids) < len(element_ids):
+                            logger.warning(f"Only matched {len(matched_ids)}/{len(element_ids)} players by fpl_id. Trying name-based fallback matching.")
                             # Try to get player info from bootstrap-static for unmatched codes
                             try:
                                 bootstrap_response = requests.get(f"{settings.FPL_API_BASE_URL}/bootstrap-static/", timeout=10)
                                 bootstrap_data = bootstrap_response.json()
                                 elements = {e["id"]: e for e in bootstrap_data.get("elements", [])}
                                 
-                                unmatched_codes = set(fpl_codes) - {p.fpl_code for p in players if p.fpl_code}
-                                logger.info(f"Attempting to match {len(unmatched_codes)} players by name")
+                                unmatched_element_ids = set(element_ids) - {p.fpl_id for p in players if p.fpl_id}
+                                logger.info(f"Attempting to match {len(unmatched_element_ids)} players by name")
                                 
-                                for code in unmatched_codes:
-                                    element = elements.get(code)
+                                for element_id in unmatched_element_ids:
+                                    element = elements.get(element_id)
                                     if element:
                                         # Try to find by name - try multiple name formats
                                         web_name = element.get("web_name", "").lower().strip()
@@ -184,22 +357,22 @@ class TeamEvaluator:
                                         
                                         if player and player.id not in matched_ids:
                                             matched_ids.append(player.id)
-                                            # Update fpl_code for future matches
-                                            if not player.fpl_code:
-                                                player.fpl_code = code
-                                                logger.info(f"✓ Matched and updated fpl_code for player '{player.name}' (ID: {player.id}) = {code}")
+                                            # Update fpl_id so future lookups match by element id
+                                            if not player.fpl_id:
+                                                player.fpl_id = int(element_id)
+                                                logger.info(f"✓ Matched and updated fpl_id for player '{player.name}' (ID: {player.id}) = {element_id}")
                                             else:
-                                                logger.info(f"✓ Matched player '{player.name}' (ID: {player.id}) by name for FPL code {code}")
+                                                logger.info(f"✓ Matched player '{player.name}' (ID: {player.id}) by name for FPL element id {element_id}")
                                         else:
                                             # Player not found - create it on-the-fly if we have enough info
-                                            logger.warning(f"✗ Could not match FPL code {code} (FPL name: '{full_name}', web_name: '{web_name}')")
+                                            logger.warning(f"✗ Could not match FPL element id {element_id} (FPL name: '{full_name}', web_name: '{web_name}')")
                                             
                                             # Try to create the player if we have team info
                                             try:
                                                 # Get team from bootstrap data
                                                 team_id_fpl = element.get("team")
                                                 if team_id_fpl:
-                                                    team = self.db.query(Team).filter(Team.fpl_code == team_id_fpl).first()
+                                                    team = self.db.query(Team).filter(Team.fpl_id == team_id_fpl).first()
                                                     
                                                     # Create team if it doesn't exist
                                                     if not team:
@@ -208,13 +381,14 @@ class TeamEvaluator:
                                                         team_info = next((t for t in teams_data if t["id"] == team_id_fpl), None)
                                                         if team_info:
                                                             team = Team(
-                                                                fpl_code=team_id_fpl,
+                                                                fpl_id=team_id_fpl,
+                                                                fpl_code=team_info.get("code"),
                                                                 name=team_info.get("name", "Unknown"),
                                                                 short_name=team_info.get("short_name", "UNK"),
                                                             )
                                                             self.db.add(team)
                                                             self.db.flush()
-                                                            logger.info(f"Created new team '{team.name}' (ID: {team.id}) with fpl_code {team_id_fpl}")
+                                                            logger.info(f"Created new team '{team.name}' (ID: {team.id}) with fpl_id {team_id_fpl}")
                                                     
                                                     if team:
                                                         # Map element_type to position
@@ -224,7 +398,8 @@ class TeamEvaluator:
                                                         
                                                         # Create new player
                                                         new_player = Player(
-                                                            fpl_code=code,
+                                                            fpl_id=int(element_id),
+                                                            fpl_code=element.get("code"),
                                                             name=full_name,
                                                             first_name=first_name,
                                                             second_name=second_name,
@@ -237,9 +412,9 @@ class TeamEvaluator:
                                                         self.db.add(new_player)
                                                         self.db.flush()  # Get the ID
                                                         matched_ids.append(new_player.id)
-                                                        logger.info(f"✓ Created new player '{full_name}' (ID: {new_player.id}) with fpl_code {code}")
+                                                        logger.info(f"✓ Created new player '{full_name}' (ID: {new_player.id}) with fpl_id {element_id}")
                                             except Exception as e:
-                                                logger.debug(f"Could not create player for code {code}: {str(e)}")
+                                                logger.debug(f"Could not create player for element_id {element_id}: {str(e)}")
                                 
                                 # Commit any fpl_code updates and new players
                                 try:
@@ -280,8 +455,8 @@ class TeamEvaluator:
         fpl_to_pid = {}
         for pid in player_ids:
             player = self.db.query(Player).filter(Player.id == pid).first()
-            if player and player.fpl_code:
-                fpl_to_pid[player.fpl_code] = pid
+            if player and player.fpl_id:
+                fpl_to_pid[player.fpl_id] = pid
         
         # If we have picks data, use it to order players (starting XI first, then bench)
         ordered_pids = player_ids
@@ -291,7 +466,7 @@ class TeamEvaluator:
                 picks_by_element.items(),
                 key=lambda x: picks_by_element.get(x[0], {}).get("position", 99)
             )
-            ordered_pids = [fpl_to_pid.get(fpl_code) for fpl_code, _ in sorted_picks if fpl_code in fpl_to_pid]
+            ordered_pids = [fpl_to_pid.get(element_id) for element_id, _ in sorted_picks if element_id in fpl_to_pid]
             # Add any players not in picks (shouldn't happen, but safety)
             for pid in player_ids:
                 if pid not in ordered_pids:
@@ -314,7 +489,10 @@ class TeamEvaluator:
                 season_points = sum(p[0] for p in points_query.all())
                 
                 players_data.append(PlayerDetail(
-                    id=player.id,
+                    # Use element id for UI + routing stability; keep DB PK separately
+                    id=int(player.fpl_id or player.id),
+                    fpl_id=int(player.fpl_id) if player.fpl_id is not None else None,
+                    db_id=int(player.id),
                     name=player.name,
                     position=player.position,
                     team=player.team.name if player.team else "Unknown",

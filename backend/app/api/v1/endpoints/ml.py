@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.db import get_db
 from app.api.v1.schemas.ml import MLPredictRequest, MLPredictResponse, MLTrainRequest
 from app.services.ml.predictor import MLPredictor
 from app.services.ml.trainer import MLTrainer

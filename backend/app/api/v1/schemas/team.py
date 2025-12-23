@@ -15,9 +15,22 @@ class PlayerBase(BaseModel):
 
 class PlayerDetail(PlayerBase):
     """Detailed player schema."""
+    # FPL identifiers:
+    # - fpl_id: FPL "element id" (what bootstrap-static uses as `elements[].id`)
+    # - fpl_code: FPL "code" (different from element id; internal)
+    fpl_id: Optional[int] = None
     fpl_code: Optional[int] = None
+    # Internal DB PK for `players` table (useful for backend joins/debugging)
+    db_id: Optional[int] = None
     team_fpl_code: Optional[int] = None  # FPL team code for shirt images
+    team_short_name: Optional[str] = None
     status: str = "a"
+    is_starting: Optional[bool] = None
+    is_captain: Optional[bool] = None
+    is_vice_captain: Optional[bool] = None
+    multiplier: Optional[int] = None
+    gw_points_raw: Optional[float] = None
+    gw_points: Optional[float] = None
     total_points: float = 0.0
     goals_scored: int = 0
     assists: int = 0
@@ -45,6 +58,10 @@ class TeamEvaluationResponse(BaseModel):
     """Response schema for team evaluation."""
     season: str
     gameweek: Optional[int]
+    overall_points: Optional[float] = None
+    gw_rank: Optional[int] = None
+    transfers: Optional[int] = None
+    active_chip: Optional[str] = None
     total_points: float
     expected_points: float
     risk_score: float = Field(..., ge=0.0, le=1.0, description="Risk score 0-1")

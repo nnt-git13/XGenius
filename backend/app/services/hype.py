@@ -5,7 +5,7 @@ import random
 from typing import Dict, List
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
-from ..models import Player, HypeScore
+from app.legacy.models import Player, HypeScore
 
 # This module sketches a News API based hype engine.
 # In production, plug real providers (NewsAPI, Guardian, Twitter/X via third-party, Reddit).

@@ -14,6 +14,18 @@
   --ai-dark: #0a0a0a;
   --ai-darker: #050505;
   --ai-light: #1a1a1a;
+
+  /* XGenius design tokens (RGB triplets so Tailwind can apply alpha) */
+  --xg-bg: 5 5 5;
+  --xg-surface: 12 12 12;
+  --xg-surface-2: 18 18 18;
+  --xg-elevated: 22 22 22;
+  --xg-border: 255 255 255;
+  --xg-text: 255 255 255;
+  --xg-muted: 168 168 168;
+  --xg-accent: 0 255 133;
+  --xg-accent-2: 6 182 212;
+  --xg-focus: 139 92 246;
   
   /* Glass morphism - increased opacity for better visibility */
   --glass-bg: rgba(26, 26, 26, 0.85);
@@ -33,7 +45,7 @@ html {
 }
 
 body {
-  background-color: var(--ai-darker);
+  background-color: rgb(var(--xg-bg));
   color: white;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -64,6 +76,25 @@ body {
 
 /* Glass morphism utility */
 @layer utilities {
+  .xg-noise {
+    position: relative;
+  }
+
+  .xg-noise::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.65'/%3E%3C/svg%3E");
+  }
+
+  .xg-focus-ring:focus-visible {
+    outline: 2px solid rgb(var(--xg-focus));
+    outline-offset: 2px;
+  }
+
   .glass {
     background: var(--glass-bg);
     backdrop-filter: blur(20px) saturate(180%);

@@ -4,7 +4,7 @@ import os
 from flask.cli import with_appcontext
 from app import create_app
 from app.db import db
-from app.models import Player
+from app.legacy.models import Player
 from app.services.bootstrap import bootstrap_scores
 from app.services.hype import compute_hype
 
@@ -26,7 +26,7 @@ def init_db():
 def import_players(csv_path, season):
     # Reuse REST endpoint logic by calling it as a function if desired; here inline
     import pandas as pd
-    from app.models import Player
+    from app.legacy.models import Player
 
     df = pd.read_csv(csv_path)
     for _, r in df.iterrows():

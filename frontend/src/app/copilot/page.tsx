@@ -10,6 +10,7 @@ import { AnimatedButton } from "@/components/ui/AnimatedButton"
 import { SectionHeader } from "@/components/ui/SectionHeader"
 import { cn } from "@/lib/utils"
 import ReactMarkdown from "react-markdown"
+import { useAppStore } from "@/store/useAppStore"
 
 interface Message {
   id: string
@@ -31,8 +32,10 @@ const quickPrompts = [
 export default function CopilotPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
+  const [conversationId, setConversationId] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const teamId = useAppStore((state) => state.teamId)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -44,19 +47,29 @@ export default function CopilotPage() {
 
   const sendMessageMutation = useMutation({
     mutationFn: async (question: string) => {
-      const response = await api.askCopilot(question)
+      const response = await api.askCopilot(question, {
+        conversation_id: conversationId || undefined,
+        team_id: teamId || undefined,
+        route: window.location.pathname,
+        app_state: {
+          route: window.location.pathname,
+        },
+      })
       return response
     },
     onSuccess: (data) => {
       const assistantMessage: Message = {
         id: Date.now().toString(),
         role: "assistant",
-        content: data.answer || data.response || "I've processed your request.",
+        content: data.answer || "I've processed your request.",
         timestamp: new Date(),
         reasoning: data.reasoning,
         recommendations: data.recommendations,
       }
       setMessages((prev) => [...prev, assistantMessage])
+      if (data.conversation_id) {
+        setConversationId(data.conversation_id)
+      }
     },
     onError: (error) => {
       console.error("Copilot error:", error)

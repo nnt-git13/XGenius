@@ -183,11 +183,41 @@ export const api = {
   },
 
   // Copilot
-  async askCopilot(question: string) {
-    const response = await client.post("/assistant/ask", {
-      question,
-    });
-    return response.data;
+  async askCopilot(
+    question: string,
+    options?: {
+      conversation_id?: number;
+      team_id?: number;
+      user_id?: number;
+      route?: string;
+      app_state?: Record<string, any>;
+    }
+  ) {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    
+    try {
+      const response = await fetch(`${apiUrl}/api/v1/copilot/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: question,
+          conversation_id: options?.conversation_id,
+          team_id: options?.team_id,
+          user_id: options?.user_id,
+          route: options?.route || window.location.pathname,
+          app_state: options?.app_state || {},
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Copilot endpoint failed: ${response.status}`);
+      }
+      
+      return response.json();
+    } catch (err) {
+      console.error("Copilot error:", err);
+      throw err;
+    }
   },
 
   // ML Predictions
@@ -198,6 +228,17 @@ export const api = {
     model_name?: string;
   }) {
     const response = await client.post("/ml/predict", data);
+    return response.data;
+  },
+
+  // FPL proxy (backend -> FPL). Use these instead of calling fantasy.premierleague.com from the browser (CORS).
+  async getFplBootstrapStatic() {
+    const response = await client.get("/fpl/bootstrap-static", { timeout: 30000 });
+    return response.data;
+  },
+
+  async getFplElementSummary(playerId: number) {
+    const response = await client.get(`/fpl/element-summary/${playerId}`, { timeout: 30000 });
     return response.data;
   },
 };
@@ -220,6 +261,7 @@ export async function listPlayers(
     limit?: number;
     offset?: number;
     team?: string;
+    search?: string;
   } = {}
 ): Promise<{ players: Player[]; total: number }> {
   const params = new URLSearchParams();
@@ -228,6 +270,7 @@ export async function listPlayers(
   if (options.limit) params.append("limit", String(options.limit));
   if (options.offset) params.append("offset", String(options.offset));
   if (options.team) params.append("team", options.team);
+  if (options.search) params.append("search", options.search);
 
   const response = await client.get(`/players/?${params.toString()}`);
   const players = Array.isArray(response.data) ? response.data : [];

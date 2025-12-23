@@ -3,18 +3,16 @@ Data ingestion service for FPL data.
 Enhanced with validation and error handling.
 """
 from __future__ import annotations
-import csv
 import io
 import pandas as pd
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict
 from sqlalchemy.orm import Session
-from datetime import datetime
 
-from app.models import Player, WeeklyScore, Team
+from app.models import Player, WeeklyScore
 
 
 class DataIngestionService:
-    """Handles data ingestion from FPL API and CSVs."""
+    """Handles data ingestion from CSVs (weekly scores)."""
     
     REQUIRED_COLUMNS = ["Name", "GW", "Points", "Minutes"]
     
@@ -123,93 +121,3 @@ class DataIngestionService:
                 "message": str(e),
                 "ingested_count": ingested_count,
             }
-    
-    async def bootstrap_season(self, season: str) -> Dict[str, Any]:
-        """Bootstrap a season with initial player data from FPL API."""
-        import requests
-        
-        try:
-            base_url = "https://fantasy.premierleague.com/api"
-            
-            # Fetch bootstrap data
-            response = requests.get(f"{base_url}/bootstrap-static/")
-            data = response.json()
-            
-            # Process teams
-            teams_map = {}
-            for team_data in data.get("teams", []):
-                team = (
-                    self.db.query(Team)
-                    .filter(Team.fpl_code == team_data["id"])
-                    .first()
-                )
-                if not team:
-                    team = Team(
-                        fpl_code=team_data["id"],
-                        name=team_data["name"],
-                        short_name=team_data["short_name"],
-                        strength=team_data.get("strength", 1000),
-                    )
-                    self.db.add(team)
-                teams_map[team_data["id"]] = team
-            
-            # Process players
-            players_processed = 0
-            for player_data in data.get("elements", []):
-                team_id = player_data.get("team")
-                team = teams_map.get(team_id)
-                
-                if not team:
-                    continue
-                
-                player = (
-                    self.db.query(Player)
-                    .filter(Player.fpl_code == player_data["id"])
-                    .first()
-                )
-                
-                if not player:
-                    player = Player(
-                        fpl_code=player_data["id"],
-                        name=f"{player_data.get('first_name', '')} {player_data.get('second_name', '')}".strip(),
-                        first_name=player_data.get("first_name", ""),
-                        second_name=player_data.get("second_name", ""),
-                        team_id=team.id,
-                        position=self._map_position(player_data.get("element_type")),
-                        price=player_data.get("now_cost", 0) / 10.0,  # Convert to millions
-                        status=player_data.get("status", "a"),
-                        element_type=player_data.get("element_type"),
-                        total_points=player_data.get("total_points", 0),
-                    )
-                    self.db.add(player)
-                    players_processed += 1
-                else:
-                    # Update existing player
-                    player.price = player_data.get("now_cost", 0) / 10.0
-                    player.status = player_data.get("status", "a")
-                    player.total_points = player_data.get("total_points", 0)
-            
-            self.db.commit()
-            
-            return {
-                "status": "success",
-                "season": season,
-                "players_processed": players_processed,
-            }
-            
-        except Exception as e:
-            self.db.rollback()
-            return {
-                "status": "error",
-                "message": str(e),
-            }
-    
-    def _map_position(self, element_type: Optional[int]) -> str:
-        """Map FPL element_type to position string."""
-        mapping = {
-            1: "GK",
-            2: "DEF",
-            3: "MID",
-            4: "FWD",
-        }
-        return mapping.get(element_type, "MID")

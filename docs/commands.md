@@ -21,9 +21,15 @@ docker-compose down
 
 ### Local Development Setup
 ```bash
-# Backend setup
+# Backend setup (using conda - recommended)
 cd backend
-python3.11 -m venv .venv
+conda create -n xgenius python=3.11 -y
+conda activate xgenius
+pip install -r requirements.txt
+
+# Or using venv (if Python 3.11+ is available)
+cd backend
+python3 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 

@@ -10,6 +10,19 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Design tokens (CSS variables)
+        xg: {
+          bg: "rgb(var(--xg-bg) / <alpha-value>)",
+          surface: "rgb(var(--xg-surface) / <alpha-value>)",
+          "surface-2": "rgb(var(--xg-surface-2) / <alpha-value>)",
+          elevated: "rgb(var(--xg-elevated) / <alpha-value>)",
+          border: "rgb(var(--xg-border) / <alpha-value>)",
+          text: "rgb(var(--xg-text) / <alpha-value>)",
+          muted: "rgb(var(--xg-muted) / <alpha-value>)",
+          accent: "rgb(var(--xg-accent) / <alpha-value>)",
+          "accent-2": "rgb(var(--xg-accent-2) / <alpha-value>)",
+          focus: "rgb(var(--xg-focus) / <alpha-value>)",
+        },
         // Premium AI-themed palette
         ai: {
           primary: "#00ff85", // Neon green
@@ -62,6 +75,8 @@ const config: Config = {
         "glow-cyan": "0 0 30px rgba(6, 182, 212, 0.4)",
         "glass": "0 8px 32px 0 rgba(0, 0, 0, 0.37), inset 0 1px 0 0 rgba(255, 255, 255, 0.1)",
         "glass-glow": "0 8px 32px 0 rgba(0, 255, 133, 0.2), inset 0 1px 0 0 rgba(255, 255, 255, 0.1)",
+        // Premium surfaces
+        "xg-card": "0 18px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)",
       },
       animation: {
         "fade-in": "fadeIn 0.5s ease-in-out",

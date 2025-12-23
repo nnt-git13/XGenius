@@ -1,11 +1,13 @@
 import os
 from datetime import timedelta
 
+from app.db.paths import default_sqlite_db_path, normalize_database_url
+
 
 class Config:
-    SQLALCHEMY_DATABASE_URI = os.getenv(
-        "DATABASE_URL",
-        "sqlite:///xgenius.db",
+    _default_sqlite = f"sqlite:///{default_sqlite_db_path().as_posix()}"
+    SQLALCHEMY_DATABASE_URI = normalize_database_url(
+        os.getenv("DATABASE_URL", _default_sqlite)
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")

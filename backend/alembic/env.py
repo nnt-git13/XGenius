@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core.config import settings
-from app.core.database import Base
+from app.db import Base, normalize_database_url
 from app.models import *  # Import all models
 
 # this is the Alembic Config object
@@ -19,8 +19,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set sqlalchemy.url from settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Set sqlalchemy.url from settings (normalize sqlite paths to be CWD-independent)
+config.set_main_option("sqlalchemy.url", normalize_database_url(settings.DATABASE_URL))
 
 # Import target metadata
 target_metadata = Base.metadata

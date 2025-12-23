@@ -2,7 +2,7 @@
 
 import React from "react"
 import { motion } from "framer-motion"
-import { PlayerShirt3D } from "./PlayerShirt3D"
+import { PlayerChip } from "./PlayerChip"
 import { PlayerDetail, Formation } from "@/types/team"
 import { cn } from "@/lib/utils"
 
@@ -11,6 +11,7 @@ interface EnhancedPitchProps {
   formation: Formation
   captainId?: number | null
   viceCaptainId?: number | null
+  highlightedPlayerIds?: Set<number>
   selectedPlayerId?: number | null
   onPlayerClick?: (player: PlayerDetail) => void
   onPlayerHover?: (player: PlayerDetail | null) => void
@@ -22,6 +23,7 @@ export const EnhancedPitch: React.FC<EnhancedPitchProps> = ({
   formation,
   captainId,
   viceCaptainId,
+  highlightedPlayerIds,
   selectedPlayerId,
   onPlayerClick,
   onPlayerHover,
@@ -35,221 +37,254 @@ export const EnhancedPitch: React.FC<EnhancedPitchProps> = ({
     FWD: players.filter(p => p.position === "FWD"),
   }
 
-  // Get formation-specific layout with perspective
+  // Get formation-specific layout using flexbox-based centering
   const getFormationLayout = () => {
     const defCount = formation.def
     const midCount = formation.mid
     const fwdCount = formation.fwd
 
+    // Calculate horizontal positions: center the group, then space players equally
+    const calculatePositions = (count: number): number[] => {
+      if (count <= 1) return [50]
+      
+      // Calculate spacing between players (equal spacing)
+      // Use safe margins, but widen for 5-player lines (MID in 3-5-2 etc.)
+      // to avoid PlayerChip text overlap.
+      // For 5-player lines, keep them wide but prevent edge clipping.
+      const minMargin = count >= 5 ? 3 :3
+      const maxMargin = count >= 5 ? 97 : 97
+      const usableWidth = maxMargin - minMargin // 76% usable width
+      
+      // Equal spacing between players
+      const spacing = count > 1 ? usableWidth / (count - 1) : 0
+      
+      // Calculate total width needed for all players
+      const totalWidth = spacing * (count - 1)
+      
+      // Center the group: start position = 50% - (totalWidth / 2)
+      const start = 50 - (totalWidth / 2)
+      
+      return Array.from({ length: count }, (_, i) => start + (spacing * i))
+    }
+
     // Calculate positions with perspective (closer to camera = higher z-index)
     const defPositions = Array.from({ length: defCount }, (_, i) => {
-      const spacing = 100 / (defCount + 1)
-      return { x: spacing * (i + 1), z: 0.8 } // Defenders closer
+      return { x: calculatePositions(defCount)[i], z: 0.8 } // Defenders closer
     })
     
     const midPositions = Array.from({ length: midCount }, (_, i) => {
-      const spacing = 100 / (midCount + 1)
-      return { x: spacing * (i + 1), z: 0.6 } // Midfielders middle
+      return { x: calculatePositions(midCount)[i], z: 0.6 } // Midfielders middle
     })
     
     const fwdPositions = Array.from({ length: fwdCount }, (_, i) => {
-      const spacing = 100 / (fwdCount + 1)
-      return { x: spacing * (i + 1), z: 0.4 } // Forwards further
+      return { x: calculatePositions(fwdCount)[i], z: 0.4 } // Forwards further
     })
 
+    // Vertical positioning: optimized spacing for realistic pitch layout
+    // GK near top, DEF in defensive third, MID in center, FWD in attacking third
     return {
-      GK: { y: 8, positions: [{ x: 50, z: 1.0 }] },
-      DEF: { y: 28, positions: defPositions },
-      MID: { y: 52, positions: midPositions },
-      FWD: { y: 78, positions: fwdPositions },
+      // Formation positioned with realistic pitch spacing
+      GK: { y: 12, positions: [{ x: 50, z: 1.0 }] },        // Near top goal line
+      DEF: { y: 32, positions: defPositions },              // Defensive third
+      MID: { y: 52, positions: midPositions },               // Center of pitch
+      FWD: { y: 72, positions: fwdPositions },               // Attacking third
     }
   }
 
   const layout = getFormationLayout()
 
   return (
-    <div className={cn("relative w-full aspect-[3/4] rounded-2xl overflow-hidden", className)}>
-      {/* Stadium backdrop with depth - multiple layers */}
+    <div className={cn("relative w-full aspect-[3/4] rounded-xl overflow-hidden border-2 border-green-600/30 shadow-2xl", className)}>
+      {/* Realistic pitch background */}
       <div className="absolute inset-0">
-        {/* Base grass layer */}
-        <div className="absolute inset-0 bg-gradient-to-b from-green-900 via-green-800 to-green-900" />
+        {/* Base grass layer with realistic gradient */}
+        <div className="absolute inset-0 bg-gradient-to-b from-green-700 via-green-600 to-green-700" />
         
-        {/* 3D Grass texture with depth */}
+        {/* Grass texture pattern */}
         <div 
-          className="absolute inset-0 opacity-60"
+          className="absolute inset-0 opacity-50"
           style={{
             backgroundImage: `
               repeating-linear-gradient(
                 0deg,
-                rgba(22, 163, 74, 0.4) 0px,
-                rgba(34, 197, 94, 0.3) 1px,
-                rgba(22, 163, 74, 0.4) 2px,
-                rgba(16, 185, 129, 0.2) 3px
+                rgba(34, 139, 34, 0.3) 0px,
+                rgba(50, 205, 50, 0.2) 1px,
+                rgba(34, 139, 34, 0.3) 2px,
+                rgba(144, 238, 144, 0.1) 3px
               ),
               repeating-linear-gradient(
                 90deg,
-                rgba(34, 197, 94, 0.2) 0px,
-                rgba(22, 163, 74, 0.3) 1px,
-                rgba(34, 197, 94, 0.2) 2px,
-                rgba(16, 185, 129, 0.1) 3px
+                rgba(50, 205, 50, 0.15) 0px,
+                rgba(34, 139, 34, 0.25) 1px,
+                rgba(50, 205, 50, 0.15) 2px
               )
             `,
-            backgroundSize: "4px 4px, 4px 4px",
+            backgroundSize: "6px 6px, 6px 6px",
           }}
         />
         
-        {/* Grass blades effect for 3D look */}
+        {/* Subtle grass mowing pattern */}
         <div 
-          className="absolute inset-0 opacity-40"
+          className="absolute inset-0 opacity-20"
           style={{
             backgroundImage: `repeating-linear-gradient(
               45deg,
               transparent,
-              transparent 8px,
-              rgba(16, 185, 129, 0.1) 8px,
-              rgba(16, 185, 129, 0.1) 9px
+              transparent 20px,
+              rgba(255, 255, 255, 0.03) 20px,
+              rgba(255, 255, 255, 0.03) 21px
             )`,
           }}
         />
         
-        {/* Depth shadows - darker at edges */}
-        <div className="absolute inset-0 bg-gradient-radial from-transparent via-transparent to-black/20" />
-        
-        {/* Lighting from stadium lights */}
-        <motion.div
-          className="absolute inset-0"
-          animate={{
-            background: [
-              "radial-gradient(ellipse at 30% 15%, rgba(255,255,255,0.15) 0%, transparent 50%), radial-gradient(ellipse at 70% 15%, rgba(255,255,255,0.15) 0%, transparent 50%)",
-              "radial-gradient(ellipse at 35% 20%, rgba(255,255,255,0.2) 0%, transparent 50%), radial-gradient(ellipse at 65% 20%, rgba(255,255,255,0.2) 0%, transparent 50%)",
-              "radial-gradient(ellipse at 30% 15%, rgba(255,255,255,0.15) 0%, transparent 50%), radial-gradient(ellipse at 70% 15%, rgba(255,255,255,0.15) 0%, transparent 50%)",
-            ],
-          }}
-          transition={{
-            duration: 8,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        />
+        {/* Subtle lighting gradient */}
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/10" />
       </div>
       
-      {/* Pitch markings with depth and shadows */}
-      <div className="absolute inset-0 opacity-50">
+      {/* Professional pitch markings */}
+      <div className="absolute inset-0 opacity-70">
         <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-          {/* Center circle with 3D effect */}
           <defs>
-            <filter id="shadow">
-              <feDropShadow dx="0.2" dy="0.2" stdDeviation="0.3" floodOpacity="0.5"/>
+            <filter id="pitch-shadow">
+              <feDropShadow dx="0.1" dy="0.1" stdDeviation="0.2" floodOpacity="0.6" floodColor="white"/>
             </filter>
           </defs>
+          
+          {/* Center circle */}
           <circle 
             cx="50" 
             cy="50" 
-            r="8" 
+            r="9" 
             fill="none" 
             stroke="white" 
-            strokeWidth="0.5"
-            filter="url(#shadow)"
-            className="drop-shadow-lg"
+            strokeWidth="0.3"
+            filter="url(#pitch-shadow)"
           />
-          {/* Center line with depth */}
-          <line 
-            x1="0" 
-            y1="50" 
-            x2="100" 
-            y2="50" 
-            stroke="white" 
-            strokeWidth="0.4"
-            filter="url(#shadow)"
-            className="drop-shadow-md"
+          <circle 
+            cx="50" 
+            cy="50" 
+            r="0.5" 
+            fill="white"
+            filter="url(#pitch-shadow)"
           />
-          {/* Penalty areas with 3D depth */}
+          
+          {/* Penalty areas (top/bottom) */}
           <rect 
-            x="0" 
-            y="35" 
-            width="12" 
-            height="30" 
+            x="32" 
+            y="0" 
+            width="36" 
+            height="16" 
             fill="none" 
             stroke="white" 
-            strokeWidth="0.4"
-            filter="url(#shadow)"
-            className="drop-shadow-md"
+            strokeWidth="0.3"
+            filter="url(#pitch-shadow)"
           />
           <rect 
-            x="88" 
-            y="35" 
-            width="12" 
-            height="30" 
+            x="32" 
+            y="84" 
+            width="36" 
+            height="16" 
             fill="none" 
             stroke="white" 
-            strokeWidth="0.4"
-            filter="url(#shadow)"
-            className="drop-shadow-md"
+            strokeWidth="0.3"
+            filter="url(#pitch-shadow)"
           />
+          
           {/* Goal areas */}
           <rect 
-            x="0" 
-            y="42" 
-            width="4" 
-            height="16" 
+            x="40" 
+            y="0" 
+            width="20" 
+            height="5" 
             fill="none" 
             stroke="white" 
-            strokeWidth="0.4"
-            filter="url(#shadow)"
+            strokeWidth="0.3"
+            filter="url(#pitch-shadow)"
           />
           <rect 
-            x="96" 
-            y="42" 
-            width="4" 
-            height="16" 
+            x="40" 
+            y="95" 
+            width="20" 
+            height="5" 
             fill="none" 
             stroke="white" 
-            strokeWidth="0.4"
-            filter="url(#shadow)"
+            strokeWidth="0.3"
+            filter="url(#pitch-shadow)"
           />
+          
+          {/* Penalty spots */}
+          <circle cx="50" cy="11" r="0.4" fill="white" filter="url(#pitch-shadow)" />
+          <circle cx="50" cy="89" r="0.4" fill="white" filter="url(#pitch-shadow)" />
+          
           {/* Corner arcs */}
-          <path d="M 0 0 Q 2 0 2 2" fill="none" stroke="white" strokeWidth="0.4" filter="url(#shadow)" />
-          <path d="M 100 0 Q 98 0 98 2" fill="none" stroke="white" strokeWidth="0.4" filter="url(#shadow)" />
-          <path d="M 0 100 Q 2 100 2 98" fill="none" stroke="white" strokeWidth="0.4" filter="url(#shadow)" />
-          <path d="M 100 100 Q 98 100 98 98" fill="none" stroke="white" strokeWidth="0.4" filter="url(#shadow)" />
+          <path d="M 0 0 Q 3 0 3 3" fill="none" stroke="white" strokeWidth="0.3" filter="url(#pitch-shadow)" />
+          <path d="M 100 0 Q 97 0 97 3" fill="none" stroke="white" strokeWidth="0.3" filter="url(#pitch-shadow)" />
+          <path d="M 0 100 Q 3 100 3 97" fill="none" stroke="white" strokeWidth="0.3" filter="url(#pitch-shadow)" />
+          <path d="M 100 100 Q 97 100 97 97" fill="none" stroke="white" strokeWidth="0.3" filter="url(#pitch-shadow)" />
         </svg>
       </div>
 
-      {/* Position zone indicators with glow */}
-      <div className="absolute left-2 top-1/2 transform -translate-y-1/2 flex flex-col gap-8 text-white/30 text-xs font-bold">
-        {["GK", "DEF", "MID", "FWD"].map((pos, i) => (
-          <motion.span
-            key={pos}
-            animate={{ 
-              opacity: [0.2, 0.5, 0.2],
-              textShadow: [
-                "0 0 5px rgba(255,255,255,0.3)",
-                "0 0 10px rgba(255,255,255,0.5)",
-                "0 0 5px rgba(255,255,255,0.3)",
-              ]
-            }}
-            transition={{ 
-              duration: 3, 
-              repeat: Infinity,
-              delay: i * 0.5 
-            }}
-          >
+      {/* Position zone indicators - subtle */}
+      <div className="absolute left-2 top-1/2 transform -translate-y-1/2 flex flex-col gap-12 text-white/20 text-xs font-semibold">
+        {["GK", "DEF", "MID", "FWD"].map((pos) => (
+          <span key={pos} className="drop-shadow-sm">
             {pos}
-          </motion.span>
+          </span>
         ))}
       </div>
 
       {/* Render players by position with staggered animations */}
       {Object.entries(layout).map(([position, { y, positions }]) => {
         const positionPlayers = playersByPosition[position as keyof typeof playersByPosition] || []
+        const totalPlayers = positions.length
+        
+        // Default spacing (original behavior): use a slightly left-shifted center and compressed widths.
+        // We only override this for the 5-MID line to spread them wider and avoid text overlap.
+        const getPlayerLeft = (index: number): string => {
+          const centerX = 38
+          if (totalPlayers === 1) return `${centerX}%`
+
+          // Dynamic spacing based on player count:
+          // - 2 players: closer together
+          // - 3/4/5 players: progressively wider, capped
+          const widthMultiplier =
+            totalPlayers === 2 ? 0.30 : Math.min(0.75, 0.50 + (totalPlayers - 2) * 0.05)
+          const totalWidth = widthMultiplier * 100
+          const spacing = totalPlayers > 1 ? totalWidth / (totalPlayers - 1) : 0
+
+          const centerIndex = (totalPlayers - 1) / 2
+          const offsetFromCenter = (index - centerIndex) * spacing
+          return `calc(${centerX}% + ${offsetFromCenter}%)`
+        }
+
+        // Special-case the 5-midfield line:
+        // - Center it exactly where other lines are centered (centerX=38)
+        // - Spread it wider than the default (to avoid text overlap)
+        // - Keep it on-screen (avoid clipping on the right)
+        const getMid5Left = (index: number): string => {
+          const centerX = 38
+          const totalWidth = 75 // percent of container width used by the whole line
+          const spacing = totalWidth / 4 // 5 players => 4 gaps
+          const centerIndex = 2
+          const offsetFromCenter = (index - centerIndex) * spacing
+          return `calc(${centerX}% + ${offsetFromCenter}%)`
+        }
         
         return (
-          <React.Fragment key={position}>
+          <div
+            key={position}
+            className="absolute left-0 right-0 flex items-center justify-center"
+            style={{
+              top: `${y}%`,
+              transform: "translateY(-50%)",
+            }}
+          >
             {positions.map((pos, index) => {
               const player = positionPlayers[index]
               const isSelected = player?.id === selectedPlayerId
               const isCaptain = player?.id === captainId
               const isViceCaptain = player?.id === viceCaptainId
+              const isTransferredIn = !!player && !!highlightedPlayerIds && highlightedPlayerIds.has(player.id)
               
               return (
                 <motion.div
@@ -270,9 +305,9 @@ export const EnhancedPitch: React.FC<EnhancedPitchProps> = ({
                   }}
                   className="absolute"
                   style={{
-                    left: `${pos.x}%`,
-                    top: `${y}%`,
-                    transform: "translate(-50%, -50%)",
+                    // Only widen the 5-midfield line; keep the rest as the original layout.
+                    left: position === "MID" && totalPlayers === 5 ? getMid5Left(index) : getPlayerLeft(index),
+                    transform: "translateX(-50%)",
                     perspective: "1000px",
                     transformStyle: "preserve-3d",
                   }}
@@ -280,60 +315,48 @@ export const EnhancedPitch: React.FC<EnhancedPitchProps> = ({
                   onMouseLeave={() => onPlayerHover?.(null)}
                 >
                   {player ? (
-                    <div className="relative">
-                      {/* Enhanced glow effect for selected/captain */}
+                    <div className="relative flex flex-col items-center">
+                      {/* Subtle glow effect for captain/selected */}
                       {(isSelected || isCaptain || isViceCaptain) && (
                         <motion.div
                           className={cn(
-                            "absolute inset-0 rounded-xl blur-2xl -z-10",
-                            isCaptain && "bg-yellow-400/60",
-                            isViceCaptain && "bg-blue-400/60",
-                            isSelected && !isCaptain && !isViceCaptain && "bg-white/40"
+                            "absolute inset-0 rounded-xl blur-xl -z-10",
+                            isCaptain && "bg-yellow-400/40",
+                            isViceCaptain && "bg-blue-400/40",
+                            isSelected && !isCaptain && !isViceCaptain && "bg-white/20"
                           )}
                           animate={{
-                            scale: [1, 1.3, 1],
-                            opacity: [0.6, 0.9, 0.6],
+                            scale: [1, 1.2, 1],
+                            opacity: [0.4, 0.7, 0.4],
                           }}
                           transition={{
-                            duration: 2,
+                            duration: 2.5,
                             repeat: Infinity,
                             ease: "easeInOut",
                           }}
                         />
                       )}
-                      <PlayerShirt3D
+                      <PlayerChip
                         player={player}
                         isCaptain={isCaptain}
                         isViceCaptain={isViceCaptain}
                         isSelected={isSelected}
-                        onClick={() => onPlayerClick?.(player)}
+                        transferBadge={isTransferredIn ? "in" : null}
+                        onSelect={() => onPlayerClick?.(player)}
                         className="relative z-10"
                       />
                     </div>
                   ) : (
-                    <div className="w-20 h-28 rounded-lg bg-white/5 border-2 border-dashed border-white/20 flex items-center justify-center backdrop-blur-sm">
-                      <span className="text-white/20 text-xs">{position}</span>
+                    <div className="w-24 h-32 rounded-lg bg-white/5 border-2 border-dashed border-white/15 flex items-center justify-center backdrop-blur-sm">
+                      <span className="text-white/15 text-xs">{position}</span>
                     </div>
                   )}
-                </motion.div>
-              )
-            })}
-          </React.Fragment>
+                  </motion.div>
+                )
+              })}
+          </div>
         )
       })}
-
-      {/* Formation label with enhanced glassmorphism */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 1 }}
-        className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white/15 backdrop-blur-xl px-6 py-2.5 rounded-full border border-white/30 shadow-2xl"
-        style={{
-          boxShadow: "0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2)",
-        }}
-      >
-        <span className="text-white text-sm font-bold drop-shadow-lg">{formation.name}</span>
-      </motion.div>
     </div>
   )
 }

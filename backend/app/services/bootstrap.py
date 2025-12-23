@@ -2,8 +2,8 @@ from __future__ import annotations
 import os
 import pandas as pd
 from sqlalchemy.orm import Session
-from ..db import db
-from ..models import Player
+from app.db import db
+from app.legacy.models import Player
 from .scoring import compute_base_score, form_component, fixtures_component, odds_component, upsert_score_object
 
 

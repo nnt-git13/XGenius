@@ -18,6 +18,15 @@ from .copilot import (
     ActionStatus,
     ActionRisk,
 )
+from .fpl_snapshot import FPLApiSnapshot
+from .player_season_stat import PlayerSeasonStat
+from .pl_team import PLTeam
+from .pl_player import PLPlayer
+from .pl_match import PLMatch
+from .pl_match_team_stats import PLMatchTeamStats
+from .pl_match_event import PLMatchEvent
+from .pl_match_lineup import PLMatchLineup
+from .pl_ingest_state import PLIngestState
 
 __all__ = [
     "Player",
@@ -38,5 +47,14 @@ __all__ = [
     "MessageRole",
     "ActionStatus",
     "ActionRisk",
+    "FPLApiSnapshot",
+    "PlayerSeasonStat",
+    "PLTeam",
+    "PLPlayer",
+    "PLMatch",
+    "PLMatchTeamStats",
+    "PLMatchEvent",
+    "PLMatchLineup",
+    "PLIngestState",
 ]
 

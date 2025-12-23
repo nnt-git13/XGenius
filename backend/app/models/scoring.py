@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Index, JSON
 from sqlalchemy.orm import relationship
-from ..core.database import Base
+from app.db import Base
 
 
 class ScoreObject(Base):

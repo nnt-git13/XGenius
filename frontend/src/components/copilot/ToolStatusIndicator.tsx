@@ -2,7 +2,7 @@
 
 import React from "react"
 import { motion } from "framer-motion"
-import { CheckCircle2, Clock, AlertCircle, Loader2, XCircle } from "lucide-react"
+import { CheckCircle2, Clock, Loader2, XCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface ToolStatusIndicatorProps {
@@ -11,7 +11,15 @@ interface ToolStatusIndicatorProps {
   className?: string
 }
 
-const statusConfig = {
+type StatusConfigItem = {
+  icon: typeof CheckCircle2
+  color: string
+  bg: string
+  label: string
+  animate?: boolean
+}
+
+const statusConfig: Record<ToolStatusIndicatorProps["status"], StatusConfigItem> = {
   pending: { icon: Clock, color: "text-yellow-400", bg: "bg-yellow-400/10", label: "Pending" },
   preview: { icon: Clock, color: "text-blue-400", bg: "bg-blue-400/10", label: "Preview" },
   executing: { icon: Loader2, color: "text-ai-primary", bg: "bg-ai-primary/10", label: "Running", animate: true },

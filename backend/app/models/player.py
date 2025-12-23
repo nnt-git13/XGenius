@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Index, Text
 from sqlalchemy.orm import relationship
-from ..core.database import Base
+from app.db import Base
 
 
 class Player(Base):
@@ -13,7 +13,11 @@ class Player(Base):
     __tablename__ = "players"
     
     id = Column(Integer, primary_key=True, index=True)
-    fpl_code = Column(Integer, unique=True, index=True, nullable=True)  # FPL API code
+    # FPL identifiers:
+    # - fpl_id: "element id" (used by endpoints like /event/{gw}/live and /entry/{id}/event/{gw}/picks)
+    # - fpl_code: "code" field from bootstrap-static (internal FPL code; not the same as element id)
+    fpl_id = Column(Integer, index=True, nullable=True)
+    fpl_code = Column(Integer, unique=True, index=True, nullable=True)  # FPL bootstrap "code"
     name = Column(String(120), nullable=False, index=True)
     first_name = Column(String(60))
     second_name = Column(String(60))
@@ -50,6 +54,7 @@ class Player(Base):
     score_objects = relationship("ScoreObject", back_populates="player", cascade="all, delete-orphan")
     hype_scores = relationship("HypeScore", back_populates="player", cascade="all, delete-orphan")
     ml_predictions = relationship("MLPrediction", back_populates="player", cascade="all, delete-orphan")
+    season_stats = relationship("PlayerSeasonStat", back_populates="player", cascade="all, delete-orphan")
     
     __table_args__ = (
         Index("idx_player_season_position", "team_id", "position"),

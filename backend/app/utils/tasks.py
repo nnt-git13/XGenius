@@ -2,8 +2,8 @@ from __future__ import annotations
 import os
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import current_app
-from ..db import db
-from ..models import Player
+from app.db import db
+from app.legacy.models import Player
 from ..services.hype import compute_hype
 
 
