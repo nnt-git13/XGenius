@@ -1,4 +1,7 @@
 {
-  "/transfers/page": "app/transfers/page.js",
-  "/optimize/page": "app/optimize/page.js"
+  "/team/page": "app/team/page.js",
+  "/compare/page": "app/compare/page.js",
+  "/optimize/page": "app/optimize/page.js",
+  "/copilot/page": "app/copilot/page.js",
+  "/analytics/page": "app/analytics/page.js"
 }

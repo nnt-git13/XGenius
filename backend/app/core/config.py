@@ -55,9 +55,15 @@ class Settings(BaseSettings):
         env="ML_TRAINING_DATA_DIR"
     )
     
-    # LLM / AI
+    # LLM / AI - Multiple provider support (use whichever API key is available)
     OPENAI_API_KEY: str = Field(default="", env="OPENAI_API_KEY")
     OPENAI_MODEL: str = Field(default="gpt-4o-mini", env="OPENAI_MODEL")
+    GROQ_API_KEY: str = Field(default="", env="GROQ_API_KEY")
+    GROQ_MODEL: str = Field(default="llama-3.3-70b-versatile", env="GROQ_MODEL")
+    GEMINI_API_KEY: str = Field(default="", env="GEMINI_API_KEY")
+    GEMINI_MODEL: str = Field(default="gemini-2.0-flash-exp", env="GEMINI_MODEL")
+    # Default LLM provider priority: groq (free) > gemini (free) > openai
+    LLM_PROVIDER: str = Field(default="auto", env="LLM_PROVIDER")  # auto, groq, gemini, openai
     LLM_TEMPERATURE: float = 0.7
     LLM_MAX_TOKENS: int = 2000
     
