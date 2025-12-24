@@ -239,8 +239,15 @@ export default function PlayerProfilePage() {
   }, [elementSummary, teamsById])
 
   // Always return to the current/latest gameweek when navigating back to /team
-  const backHref = safeReturnTo ?? (fromPage === 'transfers' ? '/transfers' : '/team?gw=latest')
-  const backLabel = safeReturnTo ? "Back" : (fromPage === 'transfers' ? 'Back to Transfers' : 'Back to My Team')
+  const getBackInfo = () => {
+    if (safeReturnTo) return { href: safeReturnTo, label: "Back" }
+    switch (fromPage) {
+      case 'transfers': return { href: '/transfers', label: 'Back to Transfers' }
+      case 'optimize': return { href: '/optimize', label: 'Back to Optimizer' }
+      default: return { href: '/team?gw=latest', label: 'Back to My Team' }
+    }
+  }
+  const { href: backHref, label: backLabel } = getBackInfo()
 
   if (isLoading) {
     return (

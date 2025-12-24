@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter, useSearchParams } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
-import { AlertCircle, Target, TrendingUp, Settings, ChevronLeft, ChevronRight, ClipboardPaste, X } from "lucide-react"
+import { AlertCircle, Target, TrendingUp, Settings, ChevronLeft, ChevronRight, ClipboardPaste, X, ArrowRightLeft, UserPlus } from "lucide-react"
 import { api } from "@/lib/api"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { AnimatedButton } from "@/components/ui/AnimatedButton"
@@ -12,6 +12,7 @@ import { Loading } from "@/components/ui/Loading"
 import { StatCard } from "@/components/charts/StatCard"
 import { SectionHeader } from "@/components/ui/SectionHeader"
 import { useAppStore } from "@/store/useAppStore"
+import { useTransferStore } from "@/store/useTransferStore"
 import { TeamEvaluationResponse, PlayerDetail, FORMATIONS, Formation } from "@/types/team"
 import { PitchCard } from "@/components/team/PitchCard"
 import { EnhancedBenchView } from "@/components/team/EnhancedBenchView"
@@ -54,6 +55,11 @@ export default function MyTeamPage() {
   // Paste squad from optimizer
   const [showPastePreview, setShowPastePreview] = useState(false)
   const [pastedSquadData, setPastedSquadData] = useState<any>(null)
+  
+  // Transfer from transfers page
+  const pendingTransferIn = useTransferStore((s) => s.pendingTransferIn)
+  const clearPendingTransfer = useTransferStore((s) => s.clearPendingTransfer)
+  const [transferMode, setTransferMode] = useState(false)
 
   // Handle paste squad from clipboard
   const handlePasteSquad = async () => {
@@ -130,6 +136,77 @@ export default function MyTeamPage() {
     requestAnimationFrame(() => window.scrollTo({ top: y, behavior: "auto" }))
   }, [])
 
+
+  // Apply transfer from transfers page
+  const applyPendingTransfer = (outPlayer: PlayerDetail) => {
+    if (!pendingTransferIn) return
+    
+    // Check position match
+    if (outPlayer.position !== pendingTransferIn.position) {
+      toast.error(`Position mismatch: ${pendingTransferIn.name} (${pendingTransferIn.position}) cannot replace ${outPlayer.name} (${outPlayer.position})`)
+      return
+    }
+    
+    // Check budget
+    const currentBank = localBank ?? (teamData?.bank || 0)
+    const priceDiff = pendingTransferIn.price - outPlayer.price
+    if (priceDiff > currentBank) {
+      toast.error(`Not enough budget: need £${priceDiff.toFixed(1)}m more`)
+      return
+    }
+    
+    // Create new player from pending transfer
+    const newPlayer: PlayerDetail = {
+      id: pendingTransferIn.fpl_id,
+      fpl_id: pendingTransferIn.fpl_id,
+      name: pendingTransferIn.name,
+      position: pendingTransferIn.position,
+      team: pendingTransferIn.team,
+      team_short_name: pendingTransferIn.team_short_name,
+      price: pendingTransferIn.price,
+      status: "a",
+      is_starting: outPlayer.is_starting,
+      is_captain: false,
+      is_vice_captain: false,
+      total_points: pendingTransferIn.total_points,
+      goals_scored: pendingTransferIn.goals_scored,
+      assists: pendingTransferIn.assists,
+      clean_sheets: 0,
+    }
+    
+    // Apply the transfer
+    const basePlayers = (localPlayers ?? displayData?.players ?? []) as PlayerDetail[]
+    const idx = basePlayers.findIndex((p) => p.id === outPlayer.id)
+    if (idx < 0) {
+      toast.error("Player not found in squad")
+      return
+    }
+    
+    // Store original for potential revert
+    setTransferOriginalByIndex((prev) => ({ ...prev, [idx]: outPlayer }))
+    
+    // Replace player
+    const updated = [...basePlayers]
+    updated[idx] = newPlayer
+    setLocalPlayers(updated)
+    
+    // Update bank
+    setLocalBank(currentBank - priceDiff)
+    
+    // Clear pending transfer
+    clearPendingTransfer()
+    setTransferMode(false)
+    
+    toast.success(`Transferred ${outPlayer.name} → ${pendingTransferIn.name}`)
+  }
+
+  // Cancel pending transfer
+  const cancelPendingTransfer = () => {
+    clearPendingTransfer()
+    setTransferMode(false)
+    toast("Transfer cancelled")
+  }
+
   const BackgroundVideo = (
     <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
       <video
@@ -158,8 +235,11 @@ export default function MyTeamPage() {
   const [previousGameweek, setPreviousGameweek] = useState<number | null>(null)
 
   // If we navigated back from player profile, always reset to the latest/current gameweek.
+  // Also handle gw=upcoming for transfer mode
   useEffect(() => {
     const gwParam = searchParams.get("gw")
+    const modeParam = searchParams.get("mode")
+    
     if (gwParam === "latest") {
       setSelectedGameweek(null)
       setIsSwitchingGameweek(false)
@@ -169,14 +249,20 @@ export default function MyTeamPage() {
       setLocalCaptainId(null)
       // Clean the URL so refresh/bookmarks don't keep forcing resets.
       router.replace("/team")
+    } else if (gwParam === "upcoming") {
+      // Navigate to upcoming gameweek (for transfers)
+      // We need to wait for uiUpcomingGw to be available, handled in separate effect
+      if (modeParam === "transfer" && pendingTransferIn) {
+        setTransferMode(true)
+      }
     }
   }, [searchParams, router])
 
   // Fetch FPL bootstrap-static early (we use its deadline info to compute upcoming/latest GW)
-  const { data: fplBootstrap } = useQuery({
+  // This doesn't require teamId - it's general FPL data
+  const { data: fplBootstrap, isLoading: isLoadingBootstrap } = useQuery({
     queryKey: ["fpl-bootstrap-static-lite"],
     queryFn: () => api.getFplBootstrapStatic(),
-    enabled: !!teamId,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
     retry: false,
@@ -234,6 +320,22 @@ export default function MyTeamPage() {
   
   const gameweekToFetch = getGameweekToFetch(selectedGameweek, latestGameweek, uiUpcomingGw ?? null)
   
+  // Handle transfer mode from transfers page
+  useEffect(() => {
+    const mode = searchParams.get("mode")
+    const gwParam = searchParams.get("gw")
+    
+    // If coming from transfers page with a pending transfer
+    // Wait for fplBootstrap to be fully loaded (uiUpcomingGw will be valid)
+    if ((mode === "transfer" || gwParam === "upcoming") && pendingTransferIn && fplBootstrap && uiUpcomingGw) {
+      setTransferMode(true)
+      // Navigate to upcoming gameweek
+      setSelectedGameweek(uiUpcomingGw)
+      // Clear the URL params after processing
+      router.replace("/team")
+    }
+  }, [searchParams, pendingTransferIn, fplBootstrap, uiUpcomingGw, router])
+
   // Detect gameweek changes
   useEffect(() => {
     if (selectedGameweek !== previousGameweek && previousGameweek !== null) {
@@ -475,13 +577,21 @@ export default function MyTeamPage() {
   }
 
   // Show loading when initially loading or switching gameweeks
-  if ((isLoading && !teamData) || isSwitchingGameweek) {
+  // Also show loading when in transfer mode and bootstrap hasn't loaded yet
+  const showLoading = (isLoading && !teamData) || isSwitchingGameweek || 
+    (pendingTransferIn && isLoadingBootstrap)
+  
+  if (showLoading) {
     return (
       <div className="min-h-screen relative overflow-hidden bg-black">
         {BackgroundVideo}
         <div className="relative container mx-auto px-4 py-10 max-w-6xl z-10">
           <div className="flex items-center justify-center min-h-[60vh]">
-            <Loading size="lg" text={isSwitchingGameweek ? `Loading Gameweek ${selectedGameweek || uiLatestGw}...` : "Loading your team..."} />
+            <Loading size="lg" text={
+              pendingTransferIn ? "Preparing transfer..." :
+              isSwitchingGameweek ? `Loading Gameweek ${selectedGameweek || uiLatestGw}...` : 
+              "Loading your team..."
+            } />
           </div>
         </div>
       </div>
@@ -684,7 +794,35 @@ export default function MyTeamPage() {
           <div className="grid lg:grid-cols-[1.6fr_1fr] gap-6">
             {/* Pitch View */}
             <div className="space-y-6">
-              {isUpcomingGameweek && (
+              {/* Transfer Mode Banner */}
+              {transferMode && pendingTransferIn && (
+                <GlassCard className="mb-4 border-green-500/30 bg-green-500/10">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-xl bg-green-500/20">
+                      <UserPlus className="h-6 w-6 text-green-400" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-white font-semibold flex items-center gap-2">
+                        Transfer In: <span className="text-green-400">{pendingTransferIn.name}</span>
+                        <span className="text-white/60 text-sm">({pendingTransferIn.position} • £{pendingTransferIn.price.toFixed(1)}m)</span>
+                      </h3>
+                      <p className="text-white/70 text-sm mt-1">
+                        Click on a <span className="text-green-400 font-medium">{pendingTransferIn.position}</span> to replace them with {pendingTransferIn.name}
+                      </p>
+                    </div>
+                    <button
+                      onClick={cancelPendingTransfer}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/30 
+                                 hover:bg-red-500/30 transition-colors text-red-400"
+                    >
+                      <X className="h-4 w-4" />
+                      <span className="text-sm font-medium">Cancel</span>
+                    </button>
+                  </div>
+                </GlassCard>
+              )}
+
+              {isUpcomingGameweek && !transferMode && (
                 <GlassCard className="mb-4 border-ai-primary/30 bg-ai-primary/10">
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
@@ -718,11 +856,20 @@ export default function MyTeamPage() {
                 viceCaptainId={displayData.vice_captain_id}
                 highlightedPlayerIds={transferredInIds}
                 selectedPlayerId={selectedPlayer?.id || null}
-                onPlayerClick={setSelectedPlayer}
+                onPlayerClick={(player) => {
+                  if (transferMode && pendingTransferIn) {
+                    // In transfer mode, clicking applies the transfer
+                    applyPendingTransfer(player)
+                  } else {
+                    setSelectedPlayer(player)
+                  }
+                }}
                 onPlayerHover={setHoveredPlayer}
-                subtitle={isUpcomingGameweek 
-                  ? "Upcoming Gameweek • Click players to transfer" 
-                  : `Gameweek ${uiLatestGw}${selectedGameweek === null ? " (Latest)" : ""} • XI positions animate on formation change`}
+                subtitle={transferMode && pendingTransferIn
+                  ? `Click a ${pendingTransferIn.position} to replace with ${pendingTransferIn.name}`
+                  : isUpcomingGameweek 
+                    ? "Upcoming Gameweek • Click players to transfer" 
+                    : `Gameweek ${uiLatestGw}${selectedGameweek === null ? " (Latest)" : ""} • XI positions animate on formation change`}
               />
 
               {/* Bench */}
@@ -732,7 +879,13 @@ export default function MyTeamPage() {
                   captainId={displayData.captain_id}
                   viceCaptainId={displayData.vice_captain_id}
                   highlightedPlayerIds={transferredInIds}
-                  onPlayerClick={setSelectedPlayer}
+                  onPlayerClick={(player) => {
+                    if (transferMode && pendingTransferIn) {
+                      applyPendingTransfer(player)
+                    } else {
+                      setSelectedPlayer(player)
+                    }
+                  }}
                 />
               </div>
             </div>
