@@ -168,7 +168,10 @@ const PlayerDetailsPanel: React.FC<{
         
         {/* View Full Stats Button */}
         <button
-          onClick={() => router.push(`/player/${player.id}`)}
+          onClick={() => {
+            const returnTo = encodeURIComponent("/optimize")
+            router.push(`/player/${player.id}?from=optimize&returnTo=${returnTo}`)
+          }}
           className="w-full mb-4 p-2 rounded-lg bg-ai-primary/20 border border-ai-primary/30 
                      hover:bg-ai-primary/30 transition-colors flex items-center justify-center gap-2"
         >
