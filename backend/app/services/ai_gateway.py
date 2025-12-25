@@ -129,16 +129,17 @@ class AIGateway:
         self._init_clients()
     
     def _init_clients(self):
-        """Initialize LLM provider clients based on available API keys."""
-        # Priority: Groq (free) > Gemini (free) > OpenAI (paid)
+        """Initialize LLM provider clients based on available API keys.
+        Priority: Groq (free & fast) > Gemini (free) > OpenAI (paid)
+        """
         provider_preference = settings.LLM_PROVIDER
         
-        # Initialize Groq (FREE)
+        # Initialize Groq FIRST (FREE and fast!)
         if settings.GROQ_API_KEY:
             try:
                 from groq import Groq
                 self.groq_client = Groq(api_key=settings.GROQ_API_KEY)
-                logger.info("✅ Groq client initialized (FREE)")
+                logger.info("✅ Groq client initialized (FREE - Llama 3.3 70B)")
                 if provider_preference in ("auto", "groq"):
                     self.available_provider = Provider.GROQ
             except ImportError:
@@ -146,7 +147,7 @@ class AIGateway:
             except Exception as e:
                 logger.error(f"Failed to initialize Groq client: {e}")
         
-        # Initialize Gemini (FREE tier)
+        # Initialize Gemini as second option (FREE tier)
         if settings.GEMINI_API_KEY and not self.available_provider:
             try:
                 import google.generativeai as genai
@@ -160,7 +161,7 @@ class AIGateway:
             except Exception as e:
                 logger.error(f"Failed to initialize Gemini client: {e}")
         
-        # Initialize OpenAI (paid)
+        # Initialize OpenAI as fallback (paid - may have quota issues)
         if settings.OPENAI_API_KEY and not self.available_provider:
             try:
                 import openai

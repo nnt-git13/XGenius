@@ -210,7 +210,7 @@ export const api = {
     return response.data;
   },
 
-  // Copilot
+  // Copilot - Does NOT trigger global loading overlay (has its own "thinking" indicator)
   async askCopilot(
     question: string,
     options?: {
@@ -221,12 +221,9 @@ export const api = {
       app_state?: Record<string, any>;
     }
   ) {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const requestId = generateRequestId();
-    
+    // Use the same API_URL base which already includes /api/v1
     try {
-      useLoadingStore.getState().startLoading(requestId);
-      const response = await fetch(`${apiUrl}/api/v1/copilot/chat`, {
+      const response = await fetch(`${API_URL}/copilot/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -243,11 +240,8 @@ export const api = {
         throw new Error(`Copilot endpoint failed: ${response.status}`);
       }
       
-      const data = await response.json();
-      useLoadingStore.getState().stopLoading(requestId);
-      return data;
+      return await response.json();
     } catch (err) {
-      useLoadingStore.getState().stopLoading(requestId);
       console.error("Copilot error:", err);
       throw err;
     }

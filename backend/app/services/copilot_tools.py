@@ -322,13 +322,13 @@ class ToolRegistry:
         elements = bootstrap.get("elements", [])
         teams = {t["id"]: t for t in bootstrap.get("teams", [])}
         
-        query = params.get("query", "").lower()
+        query = (params.get("query") or "").lower()
         position = params.get("position")
-        team = params.get("team", "").lower()
-        min_price = params.get("min_price", 0) * 10  # Convert to FPL format
-        max_price = params.get("max_price", 100) * 10
-        sort_by = params.get("sort_by", "total_points")
-        limit = params.get("limit", 10)
+        team = (params.get("team") or "").lower()
+        min_price = (params.get("min_price") or 0) * 10  # Convert to FPL format
+        max_price = (params.get("max_price") or 100) * 10
+        sort_by = params.get("sort_by") or "total_points"
+        limit = params.get("limit") or 10
         
         position_map = {"GK": 1, "DEF": 2, "MID": 3, "FWD": 4}
         reverse_position_map = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}

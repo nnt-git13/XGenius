@@ -88,22 +88,29 @@ class ContextBuilder:
         }
     
     async def _build_team_context(self, team_id: Optional[int]) -> Dict[str, Any]:
-        """Build FPL team context."""
+        """Build comprehensive FPL team context with squad data."""
         if not team_id:
             return {}
         
         context = {"team_id": team_id}
+        bootstrap = await self._fetch_fpl_bootstrap()
+        elements = {e["id"]: e for e in bootstrap.get("elements", [])}
+        teams = {t["id"]: t for t in bootstrap.get("teams", [])}
         
-        # Try to fetch team data from FPL API
+        # Get current gameweek
+        events = bootstrap.get("events", [])
+        current_gw = next((e for e in events if e.get("is_current")), None)
+        gw_number = current_gw.get("id", 1) if current_gw else 1
+        
         try:
             async with httpx.AsyncClient() as client:
-                # Get team picks (current team)
-                picks_response = await client.get(
+                # Get team entry data
+                entry_response = await client.get(
                     f"{self.FPL_API_BASE}/entry/{team_id}/",
                     timeout=10
                 )
-                if picks_response.status_code == 200:
-                    team_data = picks_response.json()
+                if entry_response.status_code == 200:
+                    team_data = entry_response.json()
                     context.update({
                         "manager_name": f"{team_data.get('player_first_name', '')} {team_data.get('player_last_name', '')}",
                         "team_name": team_data.get("name", ""),
@@ -113,6 +120,78 @@ class ContextBuilder:
                         "bank": team_data.get("last_deadline_bank", 0) / 10,
                         "team_value": team_data.get("last_deadline_value", 0) / 10,
                     })
+                
+                # Get current squad picks
+                picks_response = await client.get(
+                    f"{self.FPL_API_BASE}/entry/{team_id}/event/{gw_number}/picks/",
+                    timeout=10
+                )
+                if picks_response.status_code == 200:
+                    picks_data = picks_response.json()
+                    picks = picks_data.get("picks", [])
+                    
+                    # Build squad with player details
+                    squad = []
+                    captain_id = None
+                    vice_captain_id = None
+                    
+                    for pick in picks:
+                        element_id = pick.get("element")
+                        player = elements.get(element_id, {})
+                        team_info = teams.get(player.get("team", 0), {})
+                        
+                        player_info = {
+                            "name": player.get("web_name", "Unknown"),
+                            "team": team_info.get("short_name", "?"),
+                            "position": ["GKP", "DEF", "MID", "FWD"][player.get("element_type", 1) - 1],
+                            "price": player.get("now_cost", 0) / 10,
+                            "total_points": player.get("total_points", 0),
+                            "form": float(player.get("form", 0)),
+                            "expected_points": float(player.get("ep_next", 0)),
+                            "is_starter": pick.get("position", 12) <= 11,
+                            "is_captain": pick.get("is_captain", False),
+                            "is_vice_captain": pick.get("is_vice_captain", False),
+                            "news": player.get("news", ""),
+                            "chance_of_playing": player.get("chance_of_playing_next_round"),
+                        }
+                        squad.append(player_info)
+                        
+                        if pick.get("is_captain"):
+                            captain_id = player.get("web_name")
+                        if pick.get("is_vice_captain"):
+                            vice_captain_id = player.get("web_name")
+                    
+                    context["squad"] = squad
+                    context["captain"] = captain_id
+                    context["vice_captain"] = vice_captain_id
+                    context["starters"] = [p for p in squad if p["is_starter"]]
+                    context["bench"] = [p for p in squad if not p["is_starter"]]
+                    
+                    # Entry history for chips
+                    entry_history = picks_data.get("entry_history", {})
+                    context["free_transfers"] = entry_history.get("event_transfers", 0)
+                    context["transfers_cost"] = entry_history.get("event_transfers_cost", 0)
+                    
+                    # Active chip
+                    context["active_chip"] = picks_data.get("active_chip")
+                    
+                # Get transfer history
+                transfers_response = await client.get(
+                    f"{self.FPL_API_BASE}/entry/{team_id}/transfers/",
+                    timeout=10
+                )
+                if transfers_response.status_code == 200:
+                    transfers = transfers_response.json()
+                    recent_transfers = transfers[:5] if transfers else []
+                    context["recent_transfers"] = [
+                        {
+                            "in": elements.get(t.get("element_in"), {}).get("web_name", "?"),
+                            "out": elements.get(t.get("element_out"), {}).get("web_name", "?"),
+                            "gameweek": t.get("event"),
+                        }
+                        for t in recent_transfers
+                    ]
+                    
         except Exception as e:
             logger.warning(f"Failed to fetch team data: {e}")
         
@@ -243,7 +322,7 @@ class ContextBuilder:
                 for p in fpl["top_form_players"][:3]:
                     parts.append(f"  - {p['name']} ({p['team']}): Form {p['form']}, EP {p['expected_points']}")
         
-        # Team Context
+        # Team Context - Enhanced with full squad data
         if context.get("team") and context["team"].get("team_name"):
             team = context["team"]
             parts.append(f"\n## User's FPL Team")
@@ -255,6 +334,39 @@ class ContextBuilder:
                 parts.append(f"Total Points: {team.get('total_points')}")
             if team.get("bank"):
                 parts.append(f"Bank: £{team.get('bank')}m")
+            if team.get("team_value"):
+                parts.append(f"Team Value: £{team.get('team_value')}m")
+            
+            # Captain info
+            if team.get("captain"):
+                parts.append(f"Captain: {team.get('captain')}")
+            if team.get("vice_captain"):
+                parts.append(f"Vice Captain: {team.get('vice_captain')}")
+            
+            # Active chip
+            if team.get("active_chip"):
+                parts.append(f"Active Chip: {team.get('active_chip')}")
+            
+            # Starting XI
+            if team.get("starters"):
+                parts.append("\n### Starting XI:")
+                for p in team["starters"]:
+                    captain_mark = " (C)" if p.get("is_captain") else " (VC)" if p.get("is_vice_captain") else ""
+                    injury = f" ⚠️{p['news']}" if p.get("news") else ""
+                    parts.append(f"  - {p['name']}{captain_mark} ({p['team']}) - {p['position']}, £{p['price']}m, Form: {p['form']}, EP: {p['expected_points']}{injury}")
+            
+            # Bench
+            if team.get("bench"):
+                parts.append("\n### Bench:")
+                for p in team["bench"]:
+                    injury = f" ⚠️{p['news']}" if p.get("news") else ""
+                    parts.append(f"  - {p['name']} ({p['team']}) - {p['position']}, £{p['price']}m, Form: {p['form']}{injury}")
+            
+            # Recent transfers
+            if team.get("recent_transfers"):
+                parts.append("\n### Recent Transfers:")
+                for t in team["recent_transfers"][:3]:
+                    parts.append(f"  - GW{t['gameweek']}: {t['out']} → {t['in']}")
         
         # App State
         if context.get("app_state"):
