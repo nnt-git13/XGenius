@@ -45,12 +45,24 @@ async def chat(
             raise HTTPException(status_code=400, detail="Message is required")
         
         # Get or create conversation
+        conversation_history = []
         if conversation_id:
             conversation = db.query(CopilotConversation).filter(
                 CopilotConversation.id == conversation_id
             ).first()
             if not conversation:
                 raise HTTPException(status_code=404, detail="Conversation not found")
+            
+            # Load previous messages for context
+            previous_messages = db.query(CopilotMessage).filter(
+                CopilotMessage.conversation_id == conversation_id
+            ).order_by(CopilotMessage.created_at.asc()).limit(20).all()  # Last 20 messages max
+            
+            for msg in previous_messages:
+                conversation_history.append({
+                    "role": msg.role.value if hasattr(msg.role, 'value') else msg.role,
+                    "content": msg.content,
+                })
         else:
             conversation = CopilotConversation(
                 user_id=user_id,
@@ -82,6 +94,7 @@ async def chat(
                 team_id=team_id,
                 app_state=app_state,
                 route=route,
+                conversation_history=conversation_history,
             )
             
             # Record latency metric

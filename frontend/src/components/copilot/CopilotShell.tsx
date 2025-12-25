@@ -2,7 +2,7 @@
 
 import React, { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Minimize2, Maximize2, Bot } from "lucide-react"
+import { X, Minimize2, Maximize2, Bot, Sparkles, Zap } from "lucide-react"
 import { CopilotChat } from "./CopilotChat"
 import { cn } from "@/lib/utils"
 
@@ -13,7 +13,7 @@ interface CopilotShellProps {
 }
 
 /**
- * Main copilot shell - can be docked or floating
+ * Main copilot shell - beautiful floating design
  */
 export const CopilotShell: React.FC<CopilotShellProps> = ({
   defaultOpen = false,
@@ -31,15 +31,50 @@ export const CopilotShell: React.FC<CopilotShellProps> = ({
   if (!isOpen) {
     return (
       <motion.button
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
+        initial={{ scale: 0, rotate: -180 }}
+        animate={{ scale: 1, rotate: 0 }}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
+        transition={{ type: "spring", stiffness: 260, damping: 20 }}
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-r from-[#00ff85] to-[#06b6d4] shadow-lg hover:shadow-[0_0_30px_rgba(0,255,133,0.5)] flex items-center justify-center transition-all"
+        className="fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-2xl flex items-center justify-center transition-all group overflow-hidden"
         aria-label="Open Copilot"
+        style={{
+          background: "linear-gradient(135deg, #00ff85 0%, #06b6d4 50%, #8b5cf6 100%)",
+          boxShadow: "0 0 40px rgba(0, 255, 133, 0.4), 0 8px 32px rgba(0, 0, 0, 0.3)",
+        }}
       >
-        <Bot className="h-6 w-6 text-black" />
+        {/* Animated inner glow */}
+        <motion.div
+          animate={{
+            scale: [1, 1.2, 1],
+            opacity: [0.5, 0.8, 0.5],
+          }}
+          transition={{
+            duration: 2,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+          className="absolute inset-0 rounded-full"
+          style={{
+            background: "radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%)",
+          }}
+        />
+        <Bot className="h-7 w-7 text-black relative z-10" />
+        
+        {/* Pulse ring */}
+        <motion.div
+          animate={{
+            scale: [1, 1.5],
+            opacity: [0.4, 0],
+          }}
+          transition={{
+            duration: 1.5,
+            repeat: Infinity,
+            ease: "easeOut",
+          }}
+          className="absolute inset-0 rounded-full border-2 border-[#00ff85]"
+        />
       </motion.button>
     )
   }
@@ -47,59 +82,98 @@ export const CopilotShell: React.FC<CopilotShellProps> = ({
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, x: position === "right" ? 400 : -400 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: position === "right" ? 400 : -400 }}
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
         className={cn(
-          "fixed z-50 bg-ai-darker border border-ai-primary/20 rounded-t-2xl shadow-2xl flex flex-col",
-          position === "right" && "right-0 top-0 h-screen w-[420px] max-w-[90vw]",
-          position === "left" && "left-0 top-0 h-screen w-[420px] max-w-[90vw]",
-          position === "floating" && "bottom-6 right-6 w-[420px] h-[600px] max-w-[90vw] max-h-[90vh] rounded-2xl",
+          "fixed z-50 flex flex-col overflow-hidden",
+          position === "right" && "right-0 top-0 h-screen w-[440px] max-w-[90vw]",
+          position === "left" && "left-0 top-0 h-screen w-[440px] max-w-[90vw]",
+          position === "floating" && "bottom-6 right-6 w-[400px] h-[550px] max-w-[calc(100vw-48px)] max-h-[calc(100vh-48px)] rounded-2xl",
           isMinimized && "h-auto"
         )}
+        style={{
+          background: "linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(0, 0, 0, 0.95) 100%)",
+          backdropFilter: "blur(20px)",
+          border: "1px solid rgba(0, 255, 133, 0.15)",
+          boxShadow: "0 0 60px rgba(0, 255, 133, 0.15), 0 25px 50px -12px rgba(0, 0, 0, 0.6)",
+        }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-ai-primary/20">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00ff85] to-[#06b6d4] flex items-center justify-center">
-              <Bot className="h-5 w-5 text-black" />
+        {/* Header with gradient accent */}
+        <div className="relative">
+          {/* Top gradient line */}
+          <div 
+            className="absolute top-0 left-0 right-0 h-[2px]"
+            style={{
+              background: "linear-gradient(90deg, #00ff85 0%, #06b6d4 50%, #8b5cf6 100%)",
+            }}
+          />
+          
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div 
+                className="w-10 h-10 rounded-xl flex items-center justify-center relative overflow-hidden"
+                style={{
+                  background: "linear-gradient(135deg, rgba(0, 255, 133, 0.2) 0%, rgba(6, 182, 212, 0.2) 100%)",
+                  border: "1px solid rgba(0, 255, 133, 0.3)",
+                }}
+              >
+                <Sparkles className="h-5 w-5 text-[#00ff85]" />
+                <motion.div
+                  animate={{
+                    rotate: [0, 360],
+                  }}
+                  transition={{
+                    duration: 8,
+                    repeat: Infinity,
+                    ease: "linear",
+                  }}
+                  className="absolute inset-0 opacity-30"
+                  style={{
+                    background: "conic-gradient(from 0deg, transparent, #00ff85, transparent)",
+                  }}
+                />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                  AI Copilot
+                  <Zap className="h-3 w-3 text-[#00ff85]" />
+                </h3>
+                <p className="text-xs text-white/50">Powered by Llama 3.3</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-semibold text-white">AI Copilot</h3>
-              <p className="text-xs text-white/50">Your FPL assistant</p>
+            
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setIsMinimized(!isMinimized)}
+                className="p-2 hover:bg-white/5 rounded-lg transition-all duration-200 group"
+                aria-label={isMinimized ? "Maximize" : "Minimize"}
+              >
+                {isMinimized ? (
+                  <Maximize2 className="h-4 w-4 text-white/50 group-hover:text-[#00ff85] transition-colors" />
+                ) : (
+                  <Minimize2 className="h-4 w-4 text-white/50 group-hover:text-[#00ff85] transition-colors" />
+                )}
+              </button>
+              <button
+                onClick={handleClose}
+                className="p-2 hover:bg-red-500/10 rounded-lg transition-all duration-200 group"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4 text-white/50 group-hover:text-red-400 transition-colors" />
+              </button>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsMinimized(!isMinimized)}
-              className="p-2 hover:bg-ai-light/50 rounded-lg transition-colors"
-              aria-label={isMinimized ? "Maximize" : "Minimize"}
-            >
-              {isMinimized ? (
-                <Maximize2 className="h-4 w-4 text-white/70" />
-              ) : (
-                <Minimize2 className="h-4 w-4 text-white/70" />
-              )}
-            </button>
-            <button
-              onClick={handleClose}
-              className="p-2 hover:bg-ai-light/50 rounded-lg transition-colors"
-              aria-label="Close"
-            >
-              <X className="h-4 w-4 text-white/70" />
-            </button>
           </div>
         </div>
 
         {/* Chat Content */}
         {!isMinimized && (
           <div className="flex-1 overflow-hidden">
-            <CopilotChat />
+            <CopilotChat compact />
           </div>
         )}
       </motion.div>
     </AnimatePresence>
   )
 }
-

@@ -1,18 +1,27 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from "react"
+import { usePathname } from "next/navigation"
 import { useLoadingStore } from "@/store/useLoadingStore"
 import { useIsFetching, useIsMutating } from "@tanstack/react-query"
 import { LoadInScreen } from "@/components/loading/LoadInScreen"
 import { AnimatePresence } from "framer-motion"
 
 export function GlobalLoadingOverlay() {
+  const pathname = usePathname()
   const isLoading = useLoadingStore((state) => state.isLoading())
   const isFetching = useIsFetching() > 0
-  const isMutating = useIsMutating() > 0
   
-  // Show loading if any API call is in progress (axios or react-query)
-  const showLoading = isLoading || isFetching || isMutating
+  // Exclude copilot mutations from triggering the overlay
+  const totalMutating = useIsMutating()
+  const copilotMutating = useIsMutating({ mutationKey: ["copilot-chat"] })
+  const isMutating = (totalMutating - copilotMutating) > 0
+  
+  // Don't show loading overlay on copilot page (it has its own loading state)
+  const isCopilotPage = pathname === "/copilot"
+  
+  // Show loading if any non-copilot API call is in progress
+  const showLoading = !isCopilotPage && (isLoading || isFetching || isMutating)
   
   // Track loading state to control animation
   const [isReady, setIsReady] = useState(false)

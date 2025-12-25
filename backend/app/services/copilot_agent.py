@@ -63,9 +63,19 @@ class CopilotAgent:
         team_id: Optional[int] = None,
         app_state: Optional[Dict[str, Any]] = None,
         route: Optional[str] = None,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> Dict[str, Any]:
         """
         Process a user query through the agent loop.
+        
+        Args:
+            query: The current user message
+            conversation_id: Optional conversation ID for context
+            user_id: Optional user ID
+            team_id: Optional FPL team ID
+            app_state: Optional application state
+            route: Optional current route/page
+            conversation_history: Previous messages in this conversation
         
         Returns:
             Response with answer, actions, sources, etc.
@@ -78,19 +88,34 @@ class CopilotAgent:
             route=route,
         )
         
+        # Build messages list with conversation history
+        messages = [
+            {
+                "role": "system",
+                "content": self._build_system_prompt(context),
+            },
+        ]
+        
+        # Add conversation history (limited to avoid token limits)
+        if conversation_history:
+            # Keep last 10 messages to stay within token limits
+            recent_history = conversation_history[-10:]
+            for msg in recent_history:
+                messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", ""),
+                })
+        
+        # Add current query
+        messages.append({
+            "role": "user",
+            "content": query,
+        })
+        
         # Initialize agent state
         state = AgentState(
             step=AgentStep.PLAN,
-            messages=[
-                {
-                    "role": "system",
-                    "content": self._build_system_prompt(context),
-                },
-                {
-                    "role": "user",
-                    "content": query,
-                }
-            ],
+            messages=messages,
             tool_calls=[],
             context=context,
             actions=[],
@@ -240,11 +265,16 @@ Current Context:"""
                 state.actions.append(action)
             else:
                 result = await self.tool_registry.execute_tool(tool_name, params, dry_run=False)
+                # Truncate large tool results to avoid token limits
+                result_str = json.dumps(result)
+                max_result_len = 3000
+                if len(result_str) > max_result_len:
+                    result_str = result_str[:max_result_len] + '..."}'
                 state.messages.append({
                     "role": "tool",
                     "name": tool_name,
                     "tool_call_id": tool_call.get("id"),
-                    "content": json.dumps(result),
+                    "content": result_str,
                 })
         
         # Clear tool calls
@@ -257,15 +287,52 @@ Current Context:"""
         # Could add validation logic here
         state.step = AgentStep.RESPOND
     
+    def _truncate_messages(self, messages: List[Dict], max_total_chars: int = 8000) -> List[Dict]:
+        """Truncate messages to fit within token limits."""
+        # Keep system message and last few messages intact
+        if len(messages) <= 3:
+            return messages
+        
+        # Always keep first (system) and last 2 messages
+        result = [messages[0]]  # System message
+        
+        # Calculate remaining space
+        system_len = len(str(messages[0]))
+        last_msgs_len = sum(len(str(m)) for m in messages[-2:])
+        remaining = max_total_chars - system_len - last_msgs_len - 500  # Buffer
+        
+        # Add middle messages, truncating if needed
+        middle_msgs = messages[1:-2]
+        current_len = 0
+        for msg in middle_msgs:
+            msg_str = str(msg)
+            if current_len + len(msg_str) > remaining:
+                # Truncate this message
+                if msg.get("role") == "tool":
+                    content = msg.get("content", "")
+                    if len(content) > 500:
+                        msg = {**msg, "content": content[:500] + "... [truncated]"}
+                elif len(msg_str) > 200:
+                    continue  # Skip old messages if too long
+            result.append(msg)
+            current_len += len(str(msg))
+        
+        # Add last 2 messages
+        result.extend(messages[-2:])
+        return result
+    
     async def _respond(
         self,
         state: AgentState,
         force: bool = False
     ) -> Dict[str, Any]:
         """Response step - generate final answer."""
+        # Truncate messages to fit within token limits
+        truncated_messages = self._truncate_messages(state.messages)
+        
         # Use smart model for final response
         response = await self.ai_gateway.chat(
-            messages=state.messages,
+            messages=truncated_messages,
             model=self.ai_gateway.select_model(task_complexity="moderate"),
             temperature=0.7,
         )
