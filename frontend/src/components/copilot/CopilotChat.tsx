@@ -46,6 +46,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compact = false }) => 
   }, [messages])
 
   const sendMessageMutation = useMutation({
+    mutationKey: ["copilot-chat"],  // Exclude from global loading overlay
     mutationFn: async (message: string) => {
       const response = await api.askCopilot(message, {
         conversation_id: conversationId || undefined,

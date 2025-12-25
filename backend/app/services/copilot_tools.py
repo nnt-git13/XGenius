@@ -685,10 +685,24 @@ class ToolRegistry:
         
         candidates.sort(key=lambda x: x["score"], reverse=True)
         
+        # Get current/next gameweek info
+        events = bootstrap.get("events", [])
+        current_gw = next((e for e in events if e.get("is_current")), None)
+        next_gw = next((e for e in events if e.get("is_next")), None)
+        
+        gw_info = {}
+        if current_gw:
+            gw_info["current_gw"] = current_gw.get("id")
+            gw_info["current_gw_finished"] = current_gw.get("finished", False)
+        if next_gw:
+            gw_info["next_gw"] = next_gw.get("id")
+            gw_info["deadline"] = next_gw.get("deadline_time")
+        
         return {
             "recommendations": candidates[:5],
             "top_pick": candidates[0] if candidates else None,
-            "reasoning": "Based on form and expected points for the upcoming gameweek",
+            "gameweek_info": gw_info,
+            "reasoning": f"Based on form and expected points for GW{gw_info.get('next_gw', gw_info.get('current_gw', '?'))}",
         }
     
     async def _get_differential_picks(self, params: Dict[str, Any]) -> Dict[str, Any]:

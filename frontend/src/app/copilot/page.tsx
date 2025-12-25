@@ -90,6 +90,7 @@ export default function CopilotPage() {
   }, [messages])
 
   const sendMessageMutation = useMutation({
+    mutationKey: ["copilot-chat"],  // Exclude from global loading overlay
     mutationFn: async (question: string) => {
       const response = await api.askCopilot(question, {
         conversation_id: conversationId || undefined,

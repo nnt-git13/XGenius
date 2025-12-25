@@ -20,10 +20,12 @@ class ContextBuilder:
     """Builds comprehensive context for the copilot."""
     
     FPL_API_BASE = "https://fantasy.premierleague.com/api"
+    CACHE_TTL_SECONDS = 60  # Cache FPL data for 1 minute max
     
     def __init__(self, db: Session):
         self.db = db
         self._fpl_cache: Dict[str, Any] = {}
+        self._cache_timestamp: float = 0
     
     async def build_context(
         self,
@@ -50,8 +52,12 @@ class ContextBuilder:
         return context
     
     async def _fetch_fpl_bootstrap(self) -> Dict[str, Any]:
-        """Fetch and cache FPL bootstrap data."""
-        if "bootstrap" in self._fpl_cache:
+        """Fetch FPL bootstrap data with TTL-based caching."""
+        import time
+        current_time = time.time()
+        
+        # Check if cache is valid
+        if "bootstrap" in self._fpl_cache and (current_time - self._cache_timestamp) < self.CACHE_TTL_SECONDS:
             return self._fpl_cache["bootstrap"]
         
         try:
@@ -60,6 +66,7 @@ class ContextBuilder:
                 if response.status_code == 200:
                     data = response.json()
                     self._fpl_cache["bootstrap"] = data
+                    self._cache_timestamp = current_time
                     return data
         except Exception as e:
             logger.warning(f"Failed to fetch FPL bootstrap: {e}")
@@ -97,10 +104,18 @@ class ContextBuilder:
         elements = {e["id"]: e for e in bootstrap.get("elements", [])}
         teams = {t["id"]: t for t in bootstrap.get("teams", [])}
         
-        # Get current gameweek
+        # Get current and next gameweek
         events = bootstrap.get("events", [])
         current_gw = next((e for e in events if e.get("is_current")), None)
+        next_gw = next((e for e in events if e.get("is_next")), None)
         gw_number = current_gw.get("id", 1) if current_gw else 1
+        
+        # Add gameweek info to context
+        context["current_gameweek"] = gw_number
+        context["current_gw_finished"] = current_gw.get("finished", False) if current_gw else True
+        if next_gw:
+            context["next_gameweek"] = next_gw.get("id")
+            context["next_deadline"] = next_gw.get("deadline_time")
         
         try:
             async with httpx.AsyncClient() as client:
@@ -298,14 +313,22 @@ class ContextBuilder:
     
     def format_context_for_prompt(self, context: Dict[str, Any], max_length: int = 2000) -> str:
         """Format context as a concise string for LLM prompt (limited to max_length chars)."""
+        from datetime import datetime
         parts = []
+        
+        # Current date for reference
+        parts.append(f"Today: {datetime.now().strftime('%A, %B %d, %Y')}")
         
         # FPL Season Context (brief)
         if context.get("fpl"):
             fpl = context["fpl"]
             if fpl.get("current_gameweek"):
                 gw = fpl["current_gameweek"]
-                parts.append(f"GW{gw.get('number')} ({'done' if gw.get('finished') else 'active'}), avg: {gw.get('average_score', '?')} pts")
+                status = "finished" if gw.get("finished") else "in progress"
+                parts.append(f"GW{gw.get('number')} ({status}), avg: {gw.get('average_score', '?')} pts")
+            if fpl.get("next_gameweek"):
+                next_gw = fpl["next_gameweek"]
+                parts.append(f"Next: GW{next_gw.get('number')}, deadline: {next_gw.get('deadline', '?')}")
         
         # Team Context (concise)
         if context.get("team") and context["team"].get("team_name"):
