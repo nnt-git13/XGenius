@@ -290,6 +290,37 @@ class AIGateway:
             return response
             
         except Exception as e:
+            # If Groq fails with rate limit, fallback to Gemini
+            error_str = str(e)
+            if model_config.provider == Provider.GROQ and (
+                "rate_limit" in error_str.lower() or 
+                "413" in error_str or 
+                "too large" in error_str.lower() or
+                "tokens" in error_str.lower()
+            ):
+                logger.warning(f"Groq rate limited, falling back to Gemini: {e}")
+                if self.gemini_model:
+                    try:
+                        response = await self._gemini_chat(
+                            messages=messages,
+                            model="gemini-2.0-flash",
+                            temperature=temperature,
+                            max_tokens=max_tokens or 4096,
+                            tools=tools,
+                            **kwargs
+                        )
+                        latency_ms = (time.time() - start_time) * 1000
+                        response["metadata"] = {
+                            "model": "gemini-2.0-flash",
+                            "tier": "free",
+                            "latency_ms": latency_ms,
+                            "provider": "gemini",
+                            "fallback": True,
+                        }
+                        return response
+                    except Exception as gemini_error:
+                        logger.error(f"Gemini fallback also failed: {gemini_error}")
+            
             logger.error(f"AI Gateway error: {e}", exc_info=True)
             raise
     

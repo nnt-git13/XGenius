@@ -296,93 +296,50 @@ class ContextBuilder:
         
         return context
     
-    def format_context_for_prompt(self, context: Dict[str, Any]) -> str:
-        """Format context as a string for LLM prompt."""
+    def format_context_for_prompt(self, context: Dict[str, Any], max_length: int = 2000) -> str:
+        """Format context as a concise string for LLM prompt (limited to max_length chars)."""
         parts = []
         
-        # FPL Season Context
+        # FPL Season Context (brief)
         if context.get("fpl"):
             fpl = context["fpl"]
-            parts.append("## Current FPL Season")
-            parts.append(f"Season: {fpl.get('season', '2024-25')}")
-            
             if fpl.get("current_gameweek"):
                 gw = fpl["current_gameweek"]
-                status = "Finished" if gw.get("finished") else "In Progress"
-                parts.append(f"Current Gameweek: {gw.get('number')} ({status})")
-                if gw.get("average_score"):
-                    parts.append(f"Average Score: {gw.get('average_score')} pts")
-            
-            if fpl.get("next_gameweek"):
-                next_gw = fpl["next_gameweek"]
-                parts.append(f"Next Gameweek: {next_gw.get('number')} - Deadline: {next_gw.get('deadline')}")
-            
-            if fpl.get("top_form_players"):
-                parts.append("\nTop Form Players:")
-                for p in fpl["top_form_players"][:3]:
-                    parts.append(f"  - {p['name']} ({p['team']}): Form {p['form']}, EP {p['expected_points']}")
+                parts.append(f"GW{gw.get('number')} ({'done' if gw.get('finished') else 'active'}), avg: {gw.get('average_score', '?')} pts")
         
-        # Team Context - Enhanced with full squad data
+        # Team Context (concise)
         if context.get("team") and context["team"].get("team_name"):
             team = context["team"]
-            parts.append(f"\n## User's FPL Team")
-            parts.append(f"Team Name: {team.get('team_name')}")
-            parts.append(f"Manager: {team.get('manager_name')}")
-            if team.get("overall_rank"):
-                parts.append(f"Overall Rank: {team.get('overall_rank'):,}")
-            if team.get("total_points"):
-                parts.append(f"Total Points: {team.get('total_points')}")
-            if team.get("bank"):
-                parts.append(f"Bank: £{team.get('bank')}m")
-            if team.get("team_value"):
-                parts.append(f"Team Value: £{team.get('team_value')}m")
+            parts.append(f"\nTeam: {team.get('team_name')} | Rank: {team.get('overall_rank', '?'):,} | Pts: {team.get('total_points', '?')} | Bank: £{team.get('bank', 0)}m")
             
-            # Captain info
             if team.get("captain"):
-                parts.append(f"Captain: {team.get('captain')}")
-            if team.get("vice_captain"):
-                parts.append(f"Vice Captain: {team.get('vice_captain')}")
+                parts.append(f"Captain: {team.get('captain')} | VC: {team.get('vice_captain', '?')}")
             
-            # Active chip
-            if team.get("active_chip"):
-                parts.append(f"Active Chip: {team.get('active_chip')}")
-            
-            # Starting XI
+            # Starting XI (names only with key info)
             if team.get("starters"):
-                parts.append("\n### Starting XI:")
-                for p in team["starters"]:
-                    captain_mark = " (C)" if p.get("is_captain") else " (VC)" if p.get("is_vice_captain") else ""
-                    injury = f" ⚠️{p['news']}" if p.get("news") else ""
-                    parts.append(f"  - {p['name']}{captain_mark} ({p['team']}) - {p['position']}, £{p['price']}m, Form: {p['form']}, EP: {p['expected_points']}{injury}")
+                starters_str = ", ".join([
+                    f"{p['name']}({'C' if p.get('is_captain') else 'V' if p.get('is_vice_captain') else p['position'][0]})"
+                    for p in team["starters"]
+                ])
+                parts.append(f"XI: {starters_str}")
             
-            # Bench
+            # Bench (names only)
             if team.get("bench"):
-                parts.append("\n### Bench:")
-                for p in team["bench"]:
-                    injury = f" ⚠️{p['news']}" if p.get("news") else ""
-                    parts.append(f"  - {p['name']} ({p['team']}) - {p['position']}, £{p['price']}m, Form: {p['form']}{injury}")
+                bench_str = ", ".join([p['name'] for p in team["bench"]])
+                parts.append(f"Bench: {bench_str}")
             
-            # Recent transfers
-            if team.get("recent_transfers"):
-                parts.append("\n### Recent Transfers:")
-                for t in team["recent_transfers"][:3]:
-                    parts.append(f"  - GW{t['gameweek']}: {t['out']} → {t['in']}")
+            # Calculate expected points
+            total_ep = sum(float(p.get('expected_points', 0)) for p in team.get("starters", []))
+            parts.append(f"Expected Points: {total_ep:.1f}")
         
-        # App State
-        if context.get("app_state"):
-            app = context["app_state"]
-            if app.get("page_context"):
-                parts.append(f"\n## Current Page")
-                parts.append(app["page_context"])
-            if app.get("selected_players"):
-                parts.append(f"Selected players: {len(app['selected_players'])}")
+        # App State (brief)
+        if context.get("app_state") and context["app_state"].get("page_context"):
+            parts.append(f"\nPage: {context['app_state']['page_context']}")
         
-        # User Preferences
-        if context.get("user") and context["user"].get("preferences"):
-            prefs = context["user"]["preferences"]
-            if prefs:
-                parts.append(f"\n## User Preferences")
-                for key, value in prefs.items():
-                    parts.append(f"  - {key}: {value}")
+        result = "\n".join(parts) if parts else "Use tools to fetch data."
         
-        return "\n".join(parts) if parts else "No additional context available - use tools to fetch relevant data."
+        # Truncate if too long
+        if len(result) > max_length:
+            result = result[:max_length - 3] + "..."
+        
+        return result
