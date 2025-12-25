@@ -63,9 +63,19 @@ class CopilotAgent:
         team_id: Optional[int] = None,
         app_state: Optional[Dict[str, Any]] = None,
         route: Optional[str] = None,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> Dict[str, Any]:
         """
         Process a user query through the agent loop.
+        
+        Args:
+            query: The current user message
+            conversation_id: Optional conversation ID for context
+            user_id: Optional user ID
+            team_id: Optional FPL team ID
+            app_state: Optional application state
+            route: Optional current route/page
+            conversation_history: Previous messages in this conversation
         
         Returns:
             Response with answer, actions, sources, etc.
@@ -78,19 +88,34 @@ class CopilotAgent:
             route=route,
         )
         
+        # Build messages list with conversation history
+        messages = [
+            {
+                "role": "system",
+                "content": self._build_system_prompt(context),
+            },
+        ]
+        
+        # Add conversation history (limited to avoid token limits)
+        if conversation_history:
+            # Keep last 10 messages to stay within token limits
+            recent_history = conversation_history[-10:]
+            for msg in recent_history:
+                messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", ""),
+                })
+        
+        # Add current query
+        messages.append({
+            "role": "user",
+            "content": query,
+        })
+        
         # Initialize agent state
         state = AgentState(
             step=AgentStep.PLAN,
-            messages=[
-                {
-                    "role": "system",
-                    "content": self._build_system_prompt(context),
-                },
-                {
-                    "role": "user",
-                    "content": query,
-                }
-            ],
+            messages=messages,
             tool_calls=[],
             context=context,
             actions=[],
