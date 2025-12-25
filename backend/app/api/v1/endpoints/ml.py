@@ -47,6 +47,11 @@ async def train_model(
             hyperparameters=request.hyperparameters,
         )
         return {"status": "training_started", "model": request.model_name}
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"ML training requires optional dependencies (sklearn, numpy, pandas). {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

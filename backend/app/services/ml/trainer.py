@@ -4,19 +4,50 @@ Supports Ridge Regression, Gradient Boosting, and Random Forest.
 """
 from __future__ import annotations
 import os
-import joblib
-import numpy as np
-import pandas as pd
 from pathlib import Path
 from typing import Dict, Any, List
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.linear_model import Ridge
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
-from sklearn.pipeline import Pipeline
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sqlalchemy.orm import Session
+
+# Make numpy/pandas/sklearn optional for Vercel deployment
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    np = None  # type: ignore
+
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    pd = None  # type: ignore
+
+try:
+    import joblib
+    from sklearn.compose import ColumnTransformer
+    from sklearn.preprocessing import OneHotEncoder, StandardScaler
+    from sklearn.linear_model import Ridge
+    from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+    from sklearn.pipeline import Pipeline
+    from sklearn.model_selection import train_test_split, cross_val_score
+    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+    joblib = None  # type: ignore
+    ColumnTransformer = None  # type: ignore
+    OneHotEncoder = None  # type: ignore
+    StandardScaler = None  # type: ignore
+    Ridge = None  # type: ignore
+    GradientBoostingRegressor = None  # type: ignore
+    RandomForestRegressor = None  # type: ignore
+    Pipeline = None  # type: ignore
+    train_test_split = None  # type: ignore
+    cross_val_score = None  # type: ignore
+    mean_squared_error = None  # type: ignore
+    mean_absolute_error = None  # type: ignore
+    r2_score = None  # type: ignore
 
 from app.core.config import settings
 
@@ -29,6 +60,11 @@ class MLTrainer:
     TARGET = "points"
     
     def __init__(self, db: Session):
+        if not SKLEARN_AVAILABLE or not NUMPY_AVAILABLE or not PANDAS_AVAILABLE:
+            raise ImportError(
+                "MLTrainer requires sklearn, numpy, and pandas. "
+                "These are optional dependencies for Vercel deployment."
+            )
         self.db = db
         self.model_dir = Path(settings.MODEL_DIR)
         self.model_dir.mkdir(exist_ok=True, parents=True)
