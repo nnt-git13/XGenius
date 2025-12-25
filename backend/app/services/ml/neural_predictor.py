@@ -7,10 +7,22 @@ import numpy as np
 import pandas as pd
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from sklearn.neural_network import MLPRegressor
-from sklearn.ensemble import GradientBoostingRegressor
-import joblib
+
+# Make sklearn optional for Vercel deployment (large dependency)
+try:
+    from sklearn.preprocessing import StandardScaler, MinMaxScaler
+    from sklearn.neural_network import MLPRegressor
+    from sklearn.ensemble import GradientBoostingRegressor
+    import joblib
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+    StandardScaler = None  # type: ignore
+    MinMaxScaler = None  # type: ignore
+    MLPRegressor = None  # type: ignore
+    GradientBoostingRegressor = None  # type: ignore
+    joblib = None  # type: ignore
+
 from pathlib import Path
 
 from app.services.ml.advanced_features import AdvancedFeatureBuilder, get_feature_columns

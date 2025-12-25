@@ -4,7 +4,12 @@ Advanced squad optimizer with constraints and multi-gameweek planning.
 from __future__ import annotations
 from typing import List, Optional, Dict, Any, Tuple
 import logging
-from ortools.linear_solver import pywraplp
+try:
+    from ortools.linear_solver import pywraplp
+    ORTOOLS_AVAILABLE = True
+except ImportError:
+    ORTOOLS_AVAILABLE = False
+    pywraplp = None  # type: ignore
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
@@ -354,6 +359,11 @@ class SquadOptimizer:
         budget: float, lock_set: set, pred_dict: Dict, horizon_gw: int
     ) -> List[Tuple[Player, Any]]:
         """Optimize squad with a target transfer count."""
+        if not ORTOOLS_AVAILABLE:
+            # Fallback to greedy algorithm if OR-Tools not available
+            logger.warning("OR-Tools not available, using greedy selection")
+            return self._greedy_select(candidates, budget, lock_set, pred_dict, horizon_gw, target_transfers, current_squad)
+        
         solver = pywraplp.Solver.CreateSolver("SCIP")
         if not solver:
             raise RuntimeError("Solver unavailable")
@@ -410,6 +420,69 @@ class SquadOptimizer:
         
         # Extract solution
         return [(p, s) for p, s in candidates if x[p.id].solution_value() > 0.5]
+    
+    def _greedy_select(
+        self, candidates: List[Tuple[Player, Any]], budget: float, lock_set: set,
+        pred_dict: Dict, horizon_gw: int, target_transfers: int, current_squad: Optional[set]
+    ) -> List[Tuple[Player, Any]]:
+        """Greedy fallback algorithm when OR-Tools is not available."""
+        # Sort candidates by score
+        scored = [(self._calc_player_score(p, s, pred_dict, horizon_gw)[0], p, s) for p, s in candidates]
+        scored.sort(key=lambda x: -x[0])
+        
+        selected = []
+        used_budget = 0.0
+        position_counts = {"GK": 0, "DEF": 0, "MID": 0, "FWD": 0}
+        team_counts: Dict[int, int] = {}
+        
+        # First, add locked players
+        for score, p, s in scored:
+            if p.id in lock_set:
+                if position_counts[p.position] < POSITION_REQUIREMENTS[p.position]:
+                    selected.append((p, s))
+                    used_budget += p.price
+                    position_counts[p.position] += 1
+                    team_counts[p.team_id] = team_counts.get(p.team_id, 0) + 1
+        
+        # Then add best available players
+        target_kept = 15 - target_transfers if target_transfers >= 0 else 0
+        kept_count = len([p for p, _ in selected if current_squad and p.id in current_squad])
+        
+        for score, p, s in scored:
+            if p.id in lock_set:
+                continue
+            
+            # Check position limit
+            if position_counts[p.position] >= POSITION_REQUIREMENTS[p.position]:
+                continue
+            
+            # Check team limit
+            if team_counts.get(p.team_id, 0) >= MAX_PLAYERS_PER_TEAM:
+                continue
+            
+            # Check budget
+            if used_budget + p.price > budget:
+                continue
+            
+            # Check transfer constraint
+            if current_squad and target_transfers >= 0:
+                if p.id in current_squad:
+                    if kept_count >= target_kept:
+                        continue
+                    kept_count += 1
+                else:
+                    if kept_count < target_kept:
+                        continue
+            
+            selected.append((p, s))
+            used_budget += p.price
+            position_counts[p.position] += 1
+            team_counts[p.team_id] = team_counts.get(p.team_id, 0) + 1
+            
+            if len(selected) >= 15:
+                break
+        
+        return selected
     
     def _optimize_unconstrained(
         self, candidates: List[Tuple[Player, Any]],

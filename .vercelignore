@@ -1,45 +1,47 @@
 # Exclude files from Vercel deployment to reduce function size
 # Based on: https://vercel.com/kb/guide/troubleshooting-function-250mb-limit
 
-# Frontend build artifacts
-frontend/.next
-frontend/node_modules
-frontend/.cache
-frontend/dist
-frontend/build
+# Frontend (entire directory - not needed for API)
+frontend/
 
 # Python cache and build artifacts
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
 .Python
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
-*.whl
+**/*.so
+**/*.egg
+**/*.egg-info/
+**/dist/
+**/build/
+**/*.whl
 
 # Database files
-*.db
-*.sqlite
-*.sqlite3
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+backend/instance/
+backend/app/instance/
 
 # Test files
-tests/
-test_*.py
-*_test.py
-.pytest_cache/
-.coverage
-htmlcov/
+**/tests/
+**/test_*.py
+**/*_test.py
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
+**/pytest.ini
+**/conftest.py
 
 # Documentation
 docs/
-*.md
+**/*.md
 README.md
 QUICK_START.sh
 setup.sh
+**/setup.sh
+**/setup_venv.sh
 
 # Development files
 .env.local
@@ -48,31 +50,63 @@ setup.sh
 .gitignore
 .vscode/
 .idea/
+**/.vscode/
+**/.idea/
 
 # Large data files
-*.csv
-*.json
+**/*.csv
+**/*.json
 historical/
 models_store/
 backend/players.csv
 backend/players_mini.csv
+backend/app/players.csv
+backend/app/players_mini.csv
+backend/app/players_csv.py
+backend/app/players_csv_gen.py
 
-# Node modules (if any at root)
+# Node modules
 node_modules/
+**/node_modules/
 
 # Cache directories
 .cache/
-*.cache/
-.pytest_cache/
-.mypy_cache/
+**/.cache/
+**/*.cache/
+**/.pytest_cache/
+**/.mypy_cache/
 
-# Scripts (not needed in production)
+# Scripts (not needed for production)
 scripts/
 backend/scripts/
+**/scripts/
 
 # Docker files (not needed for serverless)
 Dockerfile
 docker-compose.yml
-backend/Dockerfile
+**/Dockerfile
+**/docker-compose.yml
+
+# Backend files not needed for API
+backend/cli.py
+backend/manage.py
+backend/pyproject.toml
+backend/alembic.ini
+backend/alembic/
+backend/historical/
+backend/models_store/
+backend/vercel.json
 backend/docker-compose.yml
+backend/Dockerfile
+backend/fix_venv_conda.sh
+backend/setup_venv.sh
+backend/setup.sh
+
+# Legacy routes (if not used)
+backend/app/routes/
+backend/app/legacy/
+backend/app/predictor.py
+backend/app/recommender.py
+backend/app/players_csv.py
+backend/app/players_csv_gen.py
 

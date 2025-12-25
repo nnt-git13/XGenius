@@ -38,7 +38,7 @@ class ToolRegistry:
     """Registry of available tools for the copilot."""
     
     FPL_API_BASE = "https://fantasy.premierleague.com/api"
-    CACHE_TTL_SECONDS = 60  # Cache expires after 60 seconds for fresh data
+    CACHE_TTL_SECONDS = 30  # Cache expires after 30 seconds for fresh data (reduced to ensure current info)
     
     def __init__(self, db: Session):
         self.db = db
@@ -140,7 +140,7 @@ class ToolRegistry:
         self.register(
             ToolDefinition(
                 name="get_gameweek_info",
-                description="Get information about the current or upcoming gameweek including deadline, fixtures, and status.",
+                description="Get CURRENT gameweek information from FPL API. ALWAYS use this tool when asked about 'current gameweek', 'this week', 'next week', or any gameweek-related question. Returns the ACTUAL current gameweek number, deadline, and status from FPL.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -561,6 +561,10 @@ class ToolRegistry:
         reverse_position_map = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
         team_info = teams.get(player.get("team"), {})
         
+        # IMPORTANT: Get CURRENT team name from FPL API (this is always up-to-date)
+        current_team_name = team_info.get("name", "Unknown")
+        current_team_short = team_info.get("short_name", "?")
+        
         # Fetch player history for recent form
         try:
             history = await self._fetch_player_history(player.get("id"))
@@ -570,12 +574,13 @@ class ToolRegistry:
             recent_matches = []
             fixtures = []
         
-        return {
+        result = {
             "id": player.get("id"),
             "name": player.get("web_name"),
             "full_name": f"{player.get('first_name')} {player.get('second_name')}",
             "position": reverse_position_map.get(player.get("element_type"), "?"),
-            "team": team_info.get("name", "Unknown"),
+            "team": team_info.get("name", "Unknown"),  # ⚠️ CURRENT TEAM from FPL API
+            "team_short": team_info.get("short_name", "?"),
             "price": player.get("now_cost", 0) / 10,
             "total_points": player.get("total_points", 0),
             "form": float(player.get("form", 0)),
@@ -613,6 +618,11 @@ class ToolRegistry:
                 for f in fixtures
             ],
         }
+        
+        # Add note that this is CURRENT data from FPL API
+        result["_note"] = f"⚠️ CURRENT DATA: {result['name']} currently plays for {result['team']} (verified from FPL API)."
+        
+        return result
     
     async def _get_team_fixtures(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Get upcoming fixtures for a team."""
@@ -686,7 +696,7 @@ class ToolRegistry:
         }
     
     async def _get_gameweek_info(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Get gameweek information."""
+        """Get CURRENT gameweek information from FPL API. Always returns fresh data."""
         bootstrap = await self._fetch_fpl_bootstrap()
         events = bootstrap.get("events", [])
         
@@ -701,7 +711,7 @@ class ToolRegistry:
         if not gw:
             return {"error": "Gameweek not found"}
         
-        return {
+        result = {
             "gameweek": gw.get("id"),
             "name": gw.get("name"),
             "deadline": gw.get("deadline_time"),
@@ -716,6 +726,17 @@ class ToolRegistry:
                 "bench_boost": gw.get("chip_plays", [{}])[0].get("num_played", 0) if gw.get("chip_plays") else 0,
             },
         }
+        
+        # Add explicit current gameweek info for clarity
+        if result["is_current"]:
+            result["message"] = f"⚠️ THIS IS THE CURRENT GAMEWEEK: GW{result['gameweek']}"
+        elif result["is_next"]:
+            # Find current GW
+            current_gw = next((e for e in events if e.get("is_current")), None)
+            current_num = current_gw.get("id") if current_gw else result["gameweek"] - 1
+            result["message"] = f"⚠️ THIS IS THE NEXT GAMEWEEK: GW{result['gameweek']} (Current GW is {current_num})"
+        
+        return result
     
     async def _compare_players(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Compare two players."""

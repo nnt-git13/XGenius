@@ -20,7 +20,7 @@ class ContextBuilder:
     """Builds comprehensive context for the copilot."""
     
     FPL_API_BASE = "https://fantasy.premierleague.com/api"
-    CACHE_TTL_SECONDS = 60  # Cache FPL data for 1 minute max
+    CACHE_TTL_SECONDS = 30  # Cache FPL data for 30 seconds max (ensure fresh data)
     
     def __init__(self, db: Session):
         self.db = db
@@ -316,19 +316,22 @@ class ContextBuilder:
         from datetime import datetime
         parts = []
         
-        # Current date for reference
-        parts.append(f"Today: {datetime.now().strftime('%A, %B %d, %Y')}")
+        # Current date for reference (CRITICAL - always include)
+        now = datetime.now()
+        parts.append(f"⚠️ CURRENT DATE: {now.strftime('%A, %B %d, %Y')} - Use this to determine what gameweek we're in!")
         
-        # FPL Season Context (brief)
+        # FPL Season Context (brief but prominent)
         if context.get("fpl"):
             fpl = context["fpl"]
             if fpl.get("current_gameweek"):
                 gw = fpl["current_gameweek"]
                 status = "finished" if gw.get("finished") else "in progress"
-                parts.append(f"GW{gw.get('number')} ({status}), avg: {gw.get('average_score', '?')} pts")
+                parts.append(f"⚠️ CURRENT GAMEWEEK: GW{gw.get('number')} ({status}) - This is the ACTUAL current gameweek!")
             if fpl.get("next_gameweek"):
                 next_gw = fpl["next_gameweek"]
-                parts.append(f"Next: GW{next_gw.get('number')}, deadline: {next_gw.get('deadline', '?')}")
+                parts.append(f"⚠️ NEXT GAMEWEEK: GW{next_gw.get('number')}, deadline: {next_gw.get('deadline', '?')}")
+            else:
+                parts.append("⚠️ IMPORTANT: Always use get_gameweek_info tool to get the CURRENT gameweek number!")
         
         # Team Context (concise)
         if context.get("team") and context["team"].get("team_name"):
