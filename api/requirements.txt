@@ -18,13 +18,13 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
 # Essential ML (lightweight) - only what's actually used
-# Using older, smaller versions to reduce size
-numpy==1.24.3
-pandas==2.0.3
+# Using Python 3.12 compatible versions (pre-built wheels, no compilation needed)
+numpy==1.26.4  # Python 3.12 compatible (has pre-built wheels)
+pandas==2.2.2  # Python 3.12 compatible (has pre-built wheels)
 # scikit-learn is large (~100MB with scipy), making it optional
 # The neural predictor can fall back to heuristic predictions without sklearn
-# scikit-learn==1.3.2
-# joblib==1.3.2
+# scikit-learn==1.5.1  # Would require scipy (~50MB), removed to save space
+# joblib==1.4.2
 # scipy is a dependency of scikit-learn (~50MB)
 
 # Optimization (required for optimizer endpoint)
