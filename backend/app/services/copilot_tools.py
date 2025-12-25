@@ -253,6 +253,102 @@ class ToolRegistry:
                 category="optimization",
             )
         )
+        
+        # Get user's squad
+        self.register(
+            ToolDefinition(
+                name="get_my_squad",
+                description="Get the user's current FPL squad with detailed player information. Use this when user asks about 'my team', 'my squad', or 'my players'.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "team_id": {"type": "integer", "description": "FPL team ID"},
+                    },
+                    "required": ["team_id"],
+                },
+                risk_level=ToolRisk.LOW,
+                requires_confirmation=False,
+                handler=self._get_my_squad,
+                category="team",
+            )
+        )
+        
+        # Analyze user's squad
+        self.register(
+            ToolDefinition(
+                name="analyze_my_squad",
+                description="Analyze the user's squad for issues, weak points, and improvement opportunities. Use when user asks for squad analysis, team review, or advice on their team.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "team_id": {"type": "integer", "description": "FPL team ID"},
+                    },
+                    "required": ["team_id"],
+                },
+                risk_level=ToolRisk.LOW,
+                requires_confirmation=False,
+                handler=self._analyze_my_squad,
+                category="analysis",
+            )
+        )
+        
+        # Get squad issues
+        self.register(
+            ToolDefinition(
+                name="get_squad_issues",
+                description="Find specific issues in the user's squad (injuries, suspensions, poor form, upcoming blanks). Use when user asks about problems with their team.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "team_id": {"type": "integer", "description": "FPL team ID"},
+                    },
+                    "required": ["team_id"],
+                },
+                risk_level=ToolRisk.LOW,
+                requires_confirmation=False,
+                handler=self._get_squad_issues,
+                category="analysis",
+            )
+        )
+        
+        # Get user's transfer history
+        self.register(
+            ToolDefinition(
+                name="get_my_transfer_history",
+                description="Get the user's recent FPL transfers. Use when user asks about their transfer history or past moves.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "team_id": {"type": "integer", "description": "FPL team ID"},
+                        "limit": {"type": "integer", "default": 10, "description": "Number of transfers to return"},
+                    },
+                    "required": ["team_id"],
+                },
+                risk_level=ToolRisk.LOW,
+                requires_confirmation=False,
+                handler=self._get_my_transfer_history,
+                category="team",
+            )
+        )
+        
+        # Get FPL entry/dashboard info
+        self.register(
+            ToolDefinition(
+                name="get_my_fpl_summary",
+                description="Get the user's FPL dashboard summary including rank, points, chips, and team value. Use when user asks about their overall FPL status, rank, or performance.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "team_id": {"type": "integer", "description": "FPL team ID"},
+                    },
+                    "required": ["team_id"],
+                },
+                risk_level=ToolRisk.LOW,
+                requires_confirmation=False,
+                handler=self._get_my_fpl_summary,
+                category="team",
+            )
+        )
     
     def register(self, tool: ToolDefinition):
         """Register a tool."""
@@ -901,3 +997,395 @@ class ToolRegistry:
             },
             "note": f"Found {len(replacements)} potential replacements. Showing top {min(limit, len(replacements))} by form and expected points."
         }
+    
+    async def _get_my_squad(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Get the user's current FPL squad with detailed player information."""
+        team_id = params.get("team_id")
+        if not team_id:
+            return {"error": "No team ID provided. Please ensure you're logged in with your FPL team."}
+        
+        bootstrap = await self._fetch_fpl_bootstrap()
+        elements = {e["id"]: e for e in bootstrap.get("elements", [])}
+        teams = {t["id"]: t for t in bootstrap.get("teams", [])}
+        events = bootstrap.get("events", [])
+        
+        # Get current gameweek
+        current_gw = next((e for e in events if e.get("is_current")), None)
+        gw_number = current_gw.get("id", 1) if current_gw else 1
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                # Get team entry
+                entry_response = await client.get(
+                    f"{self.FPL_API_BASE}/entry/{team_id}/",
+                    timeout=10
+                )
+                if entry_response.status_code != 200:
+                    return {"error": f"Could not fetch team {team_id}. Please check the team ID."}
+                
+                team_data = entry_response.json()
+                
+                # Get current picks
+                picks_response = await client.get(
+                    f"{self.FPL_API_BASE}/entry/{team_id}/event/{gw_number}/picks/",
+                    timeout=10
+                )
+                if picks_response.status_code != 200:
+                    return {"error": f"Could not fetch squad for GW{gw_number}"}
+                
+                picks_data = picks_response.json()
+                picks = picks_data.get("picks", [])
+                entry_history = picks_data.get("entry_history", {})
+                
+                # Build squad
+                starters = []
+                bench = []
+                captain = None
+                vice_captain = None
+                
+                reverse_position_map = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
+                
+                for pick in picks:
+                    element_id = pick.get("element")
+                    player = elements.get(element_id, {})
+                    team_info = teams.get(player.get("team", 0), {})
+                    
+                    player_info = {
+                        "id": element_id,
+                        "name": player.get("web_name", "Unknown"),
+                        "full_name": f"{player.get('first_name', '')} {player.get('second_name', '')}",
+                        "position": reverse_position_map.get(player.get("element_type"), "?"),
+                        "team": team_info.get("name", "Unknown"),
+                        "team_short": team_info.get("short_name", "?"),
+                        "price": player.get("now_cost", 0) / 10,
+                        "total_points": player.get("total_points", 0),
+                        "form": float(player.get("form", 0)),
+                        "expected_points": float(player.get("ep_next", 0)),
+                        "is_captain": pick.get("is_captain", False),
+                        "is_vice_captain": pick.get("is_vice_captain", False),
+                        "news": player.get("news", ""),
+                        "status": player.get("status", "a"),
+                        "chance_of_playing": player.get("chance_of_playing_next_round"),
+                    }
+                    
+                    if pick.get("position", 12) <= 11:
+                        starters.append(player_info)
+                    else:
+                        bench.append(player_info)
+                    
+                    if pick.get("is_captain"):
+                        captain = player_info["name"]
+                    if pick.get("is_vice_captain"):
+                        vice_captain = player_info["name"]
+                
+                # Calculate expected points
+                total_ep = sum(p["expected_points"] for p in starters)
+                captain_ep = next((p["expected_points"] for p in starters if p["is_captain"]), 0)
+                total_ep_with_captain = total_ep + captain_ep  # Captain points are doubled
+                
+                return {
+                    "team_name": team_data.get("name"),
+                    "manager": f"{team_data.get('player_first_name', '')} {team_data.get('player_last_name', '')}",
+                    "gameweek": gw_number,
+                    "starters": starters,
+                    "bench": bench,
+                    "captain": captain,
+                    "vice_captain": vice_captain,
+                    "total_expected_points": round(total_ep_with_captain, 1),
+                    "bank": entry_history.get("bank", 0) / 10,
+                    "team_value": entry_history.get("value", 0) / 10,
+                    "free_transfers": max(1, 2 - entry_history.get("event_transfers", 0)),
+                    "active_chip": picks_data.get("active_chip"),
+                }
+                
+        except Exception as e:
+            logger.error(f"Error fetching squad: {e}")
+            return {"error": f"Failed to fetch squad: {str(e)}"}
+    
+    async def _analyze_my_squad(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze the user's squad for issues, weak points, and improvement opportunities."""
+        # First get the squad
+        squad_data = await self._get_my_squad(params)
+        if "error" in squad_data:
+            return squad_data
+        
+        bootstrap = await self._fetch_fpl_bootstrap()
+        fixtures = await self._fetch_fixtures()
+        teams = {t["id"]: t for t in bootstrap.get("teams", [])}
+        events = bootstrap.get("events", [])
+        
+        current_gw = next((e for e in events if e.get("is_current")), None)
+        gw_number = current_gw.get("id", 1) if current_gw else 1
+        
+        analysis = {
+            "squad_summary": {
+                "team_name": squad_data.get("team_name"),
+                "gameweek": gw_number,
+                "expected_points": squad_data.get("total_expected_points"),
+                "bank": squad_data.get("bank"),
+            },
+            "strengths": [],
+            "weaknesses": [],
+            "recommendations": [],
+            "position_breakdown": {"GK": [], "DEF": [], "MID": [], "FWD": []},
+        }
+        
+        all_players = squad_data.get("starters", []) + squad_data.get("bench", [])
+        
+        # Analyze by position
+        for player in all_players:
+            pos = player.get("position", "?")
+            if pos in analysis["position_breakdown"]:
+                analysis["position_breakdown"][pos].append({
+                    "name": player["name"],
+                    "form": player["form"],
+                    "ep": player["expected_points"],
+                    "is_starter": player in squad_data.get("starters", []),
+                })
+        
+        # Find strengths
+        high_form_players = [p for p in all_players if p["form"] >= 5.0]
+        if high_form_players:
+            analysis["strengths"].append({
+                "type": "high_form",
+                "message": f"Strong form from: {', '.join([p['name'] for p in high_form_players[:3]])}",
+                "players": [p["name"] for p in high_form_players],
+            })
+        
+        # Find weaknesses
+        low_form_starters = [p for p in squad_data.get("starters", []) if p["form"] < 3.0]
+        if low_form_starters:
+            analysis["weaknesses"].append({
+                "type": "low_form",
+                "message": f"Poor form from starters: {', '.join([p['name'] for p in low_form_starters])}",
+                "players": [p["name"] for p in low_form_starters],
+            })
+        
+        # Find injury concerns
+        injury_concerns = [p for p in all_players if p.get("status") != "a" or (p.get("chance_of_playing") and p.get("chance_of_playing") < 75)]
+        if injury_concerns:
+            concern_list = [p["name"] + " (" + p.get("news", "flagged") + ")" for p in injury_concerns[:3]]
+            analysis["weaknesses"].append({
+                "type": "availability",
+                "message": "Availability concerns: " + ", ".join(concern_list),
+                "players": [p["name"] for p in injury_concerns],
+            })
+        
+        # Captain analysis
+        captain = next((p for p in squad_data.get("starters", []) if p["is_captain"]), None)
+        if captain:
+            if captain["form"] < 4.0:
+                analysis["recommendations"].append({
+                    "type": "captain",
+                    "message": f"Consider changing captain from {captain['name']} (form: {captain['form']})",
+                    "priority": "medium",
+                })
+        
+        # Bench analysis - good players benched
+        bench = squad_data.get("bench", [])
+        strong_bench = [p for p in bench if p["form"] >= 5.0]
+        if strong_bench:
+            analysis["recommendations"].append({
+                "type": "lineup",
+                "message": f"Strong bench options: {', '.join([p['name'] for p in strong_bench])} - consider starting",
+                "priority": "low",
+            })
+        
+        # Transfer recommendations
+        worst_starter = min(squad_data.get("starters", [{}]), key=lambda x: x.get("form", 0), default=None)
+        if worst_starter and worst_starter.get("form", 0) < 2.0:
+            analysis["recommendations"].append({
+                "type": "transfer",
+                "message": f"Consider replacing {worst_starter['name']} (form: {worst_starter.get('form', 0)}, {worst_starter.get('position')})",
+                "priority": "high",
+            })
+        
+        return analysis
+    
+    async def _get_squad_issues(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Find specific issues in the user's squad."""
+        squad_data = await self._get_my_squad(params)
+        if "error" in squad_data:
+            return squad_data
+        
+        issues = {
+            "injured": [],
+            "suspended": [],
+            "doubtful": [],
+            "poor_form": [],
+            "no_fixture": [],
+            "total_issues": 0,
+        }
+        
+        all_players = squad_data.get("starters", []) + squad_data.get("bench", [])
+        
+        for player in all_players:
+            is_starter = player in squad_data.get("starters", [])
+            player_info = {
+                "name": player["name"],
+                "position": player["position"],
+                "team": player["team_short"],
+                "is_starter": is_starter,
+            }
+            
+            status = player.get("status", "a")
+            news = player.get("news", "")
+            chance = player.get("chance_of_playing")
+            
+            if status == "i":
+                issues["injured"].append({**player_info, "news": news})
+                issues["total_issues"] += 1
+            elif status == "s":
+                issues["suspended"].append({**player_info, "news": news})
+                issues["total_issues"] += 1
+            elif status == "d" or (chance and chance < 75):
+                issues["doubtful"].append({**player_info, "news": news, "chance": chance})
+                issues["total_issues"] += 1
+            
+            # Poor form for starters
+            if is_starter and player.get("form", 0) < 2.0:
+                issues["poor_form"].append({
+                    **player_info,
+                    "form": player.get("form", 0),
+                    "expected_points": player.get("expected_points", 0),
+                })
+                issues["total_issues"] += 1
+        
+        # Summary
+        if issues["total_issues"] == 0:
+            issues["summary"] = "No major issues found in your squad!"
+        else:
+            issue_types = []
+            if issues["injured"]:
+                issue_types.append(f"{len(issues['injured'])} injured")
+            if issues["suspended"]:
+                issue_types.append(f"{len(issues['suspended'])} suspended")
+            if issues["doubtful"]:
+                issue_types.append(f"{len(issues['doubtful'])} doubtful")
+            if issues["poor_form"]:
+                issue_types.append(f"{len(issues['poor_form'])} in poor form")
+            issues["summary"] = f"Found {issues['total_issues']} issues: {', '.join(issue_types)}"
+        
+        return issues
+    
+    async def _get_my_transfer_history(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Get the user's recent FPL transfers."""
+        team_id = params.get("team_id")
+        limit = params.get("limit", 10)
+        
+        if not team_id:
+            return {"error": "No team ID provided"}
+        
+        bootstrap = await self._fetch_fpl_bootstrap()
+        elements = {e["id"]: e for e in bootstrap.get("elements", [])}
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.FPL_API_BASE}/entry/{team_id}/transfers/",
+                    timeout=10
+                )
+                if response.status_code != 200:
+                    return {"error": f"Could not fetch transfer history for team {team_id}"}
+                
+                transfers = response.json()
+                
+                # Format transfers
+                formatted_transfers = []
+                for t in transfers[:limit]:
+                    player_in = elements.get(t.get("element_in"), {})
+                    player_out = elements.get(t.get("element_out"), {})
+                    
+                    formatted_transfers.append({
+                        "gameweek": t.get("event"),
+                        "player_in": player_in.get("web_name", "Unknown"),
+                        "player_in_cost": t.get("element_in_cost", 0) / 10,
+                        "player_out": player_out.get("web_name", "Unknown"),
+                        "player_out_cost": t.get("element_out_cost", 0) / 10,
+                        "time": t.get("time"),
+                    })
+                
+                return {
+                    "team_id": team_id,
+                    "transfers": formatted_transfers,
+                    "total_transfers": len(transfers),
+                    "showing": min(limit, len(transfers)),
+                }
+                
+        except Exception as e:
+            logger.error(f"Error fetching transfer history: {e}")
+            return {"error": f"Failed to fetch transfer history: {str(e)}"}
+    
+    async def _get_my_fpl_summary(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Get the user's FPL dashboard summary."""
+        team_id = params.get("team_id")
+        
+        if not team_id:
+            return {"error": "No team ID provided"}
+        
+        bootstrap = await self._fetch_fpl_bootstrap()
+        events = bootstrap.get("events", [])
+        current_gw = next((e for e in events if e.get("is_current")), None)
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                # Get team entry data
+                entry_response = await client.get(
+                    f"{self.FPL_API_BASE}/entry/{team_id}/",
+                    timeout=10
+                )
+                if entry_response.status_code != 200:
+                    return {"error": f"Could not fetch team {team_id}"}
+                
+                team_data = entry_response.json()
+                
+                # Get history for chip usage
+                history_response = await client.get(
+                    f"{self.FPL_API_BASE}/entry/{team_id}/history/",
+                    timeout=10
+                )
+                chips_used = []
+                season_history = []
+                if history_response.status_code == 200:
+                    history_data = history_response.json()
+                    chips_used = [
+                        {"name": c.get("name"), "gameweek": c.get("event")}
+                        for c in history_data.get("chips", [])
+                    ]
+                    # Recent gameweek performance
+                    season_history = history_data.get("current", [])[-5:]
+                
+                # Available chips
+                used_chip_names = [c["name"] for c in chips_used]
+                all_chips = ["wildcard", "freehit", "bboost", "3xc"]
+                available_chips = [c for c in all_chips if c not in used_chip_names]
+                
+                return {
+                    "team_id": team_id,
+                    "team_name": team_data.get("name"),
+                    "manager_name": f"{team_data.get('player_first_name', '')} {team_data.get('player_last_name', '')}",
+                    "overall_rank": team_data.get("summary_overall_rank"),
+                    "total_points": team_data.get("summary_overall_points"),
+                    "gameweek_points": team_data.get("summary_event_points"),
+                    "current_gameweek": current_gw.get("id") if current_gw else None,
+                    "bank": team_data.get("last_deadline_bank", 0) / 10,
+                    "team_value": team_data.get("last_deadline_value", 0) / 10,
+                    "chips_used": chips_used,
+                    "chips_available": available_chips,
+                    "recent_gameweeks": [
+                        {
+                            "gw": h.get("event"),
+                            "points": h.get("points"),
+                            "rank": h.get("rank"),
+                            "overall_rank": h.get("overall_rank"),
+                        }
+                        for h in season_history
+                    ],
+                    "leagues": {
+                        "classic": team_data.get("leagues", {}).get("classic", [])[:3],
+                    },
+                }
+                
+        except Exception as e:
+            logger.error(f"Error fetching FPL summary: {e}")
+            return {"error": f"Failed to fetch FPL summary: {str(e)}"}

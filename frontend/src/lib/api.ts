@@ -268,6 +268,26 @@ export const api = {
     const response = await client.get(`/fpl/element-summary/${playerId}`, { timeout: 30000 });
     return response.data;
   },
+
+  async getFplEntry(entryId: number) {
+    const response = await client.get(`/fpl/entry/${entryId}`, { timeout: 30000 });
+    return response.data;
+  },
+
+  async getFplEntryHistory(entryId: number) {
+    const response = await client.get(`/fpl/entry/${entryId}/history`, { timeout: 30000 });
+    return response.data;
+  },
+
+  async getFplEntryPicks(entryId: number, gameweek: number) {
+    const response = await client.get(`/fpl/entry/${entryId}/picks/${gameweek}`, { timeout: 30000 });
+    return response.data;
+  },
+
+  async getFplFixtures() {
+    const response = await client.get("/fpl/fixtures", { timeout: 30000 });
+    return response.data;
+  },
 };
 
 // Export Player type

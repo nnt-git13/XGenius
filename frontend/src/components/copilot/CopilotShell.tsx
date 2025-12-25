@@ -134,8 +134,8 @@ export const CopilotShell: React.FC<CopilotShellProps> = ({
                     background: "conic-gradient(from 0deg, transparent, #00ff85, transparent)",
                   }}
                 />
-              </div>
-              <div>
+            </div>
+            <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                   AI Copilot
                   <Zap className="h-3 w-3 text-[#00ff85]" />
@@ -145,24 +145,24 @@ export const CopilotShell: React.FC<CopilotShellProps> = ({
             </div>
             
             <div className="flex items-center gap-1">
-              <button
-                onClick={() => setIsMinimized(!isMinimized)}
+            <button
+              onClick={() => setIsMinimized(!isMinimized)}
                 className="p-2 hover:bg-white/5 rounded-lg transition-all duration-200 group"
-                aria-label={isMinimized ? "Maximize" : "Minimize"}
-              >
-                {isMinimized ? (
+              aria-label={isMinimized ? "Maximize" : "Minimize"}
+            >
+              {isMinimized ? (
                   <Maximize2 className="h-4 w-4 text-white/50 group-hover:text-[#00ff85] transition-colors" />
-                ) : (
+              ) : (
                   <Minimize2 className="h-4 w-4 text-white/50 group-hover:text-[#00ff85] transition-colors" />
-                )}
-              </button>
-              <button
-                onClick={handleClose}
+              )}
+            </button>
+            <button
+              onClick={handleClose}
                 className="p-2 hover:bg-red-500/10 rounded-lg transition-all duration-200 group"
-                aria-label="Close"
-              >
+              aria-label="Close"
+            >
                 <X className="h-4 w-4 text-white/50 group-hover:text-red-400 transition-colors" />
-              </button>
+            </button>
             </div>
           </div>
         </div>

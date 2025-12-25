@@ -1,0 +1,78 @@
+# Exclude files from Vercel deployment to reduce function size
+# Based on: https://vercel.com/kb/guide/troubleshooting-function-250mb-limit
+
+# Frontend build artifacts
+frontend/.next
+frontend/node_modules
+frontend/.cache
+frontend/dist
+frontend/build
+
+# Python cache and build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Test files
+tests/
+test_*.py
+*_test.py
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation
+docs/
+*.md
+README.md
+QUICK_START.sh
+setup.sh
+
+# Development files
+.env.local
+.env.development
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Large data files
+*.csv
+*.json
+historical/
+models_store/
+backend/players.csv
+backend/players_mini.csv
+
+# Node modules (if any at root)
+node_modules/
+
+# Cache directories
+.cache/
+*.cache/
+.pytest_cache/
+.mypy_cache/
+
+# Scripts (not needed in production)
+scripts/
+backend/scripts/
+
+# Docker files (not needed for serverless)
+Dockerfile
+docker-compose.yml
+backend/Dockerfile
+backend/docker-compose.yml
+

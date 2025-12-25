@@ -261,15 +261,58 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compact = false }) => 
                     <ReactMarkdown
                       components={{
                         p: ({ children }) => <p className={cn(
-                          "mb-2 last:mb-0",
+                          "mb-3 last:mb-0 leading-relaxed",
                           message.role === "user" ? "text-black font-medium" : "text-white/90"
                         )}>{children}</p>,
+                        h1: ({ children }) => <h1 className="text-2xl font-bold text-white mb-3 mt-4 first:mt-0">{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-xl font-bold text-[#00ff85] mb-2 mt-4 first:mt-0">{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-lg font-semibold text-white/95 mb-2 mt-3 first:mt-0">{children}</h3>,
                         strong: ({ children }) => <strong className={cn(
                           "font-bold",
                           message.role === "user" ? "text-black" : "text-[#00ff85]"
                         )}>{children}</strong>,
-                        ul: ({ children }) => <ul className="list-disc list-inside space-y-1 mb-2">{children}</ul>,
-                        li: ({ children }) => <li className="text-white/80">{children}</li>,
+                        em: ({ children }) => <em className="italic text-white/80">{children}</em>,
+                        ul: ({ children }) => <ul className="list-disc list-inside space-y-1.5 mb-3 ml-2">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal list-inside space-y-1.5 mb-3 ml-2">{children}</ol>,
+                        li: ({ children }) => <li className="text-white/80 leading-relaxed">{children}</li>,
+                        table: ({ children }) => (
+                          <div className="overflow-x-auto mb-3">
+                            <table className="min-w-full border-collapse border border-white/20 rounded-lg">
+                              {children}
+                            </table>
+                          </div>
+                        ),
+                        thead: ({ children }) => <thead className="bg-[#00ff85]/10">{children}</thead>,
+                        tbody: ({ children }) => <tbody>{children}</tbody>,
+                        tr: ({ children }) => <tr className="border-b border-white/10 hover:bg-white/5">{children}</tr>,
+                        th: ({ children }) => (
+                          <th className="px-4 py-2 text-left text-sm font-semibold text-[#00ff85] border-r border-white/10 last:border-r-0">
+                            {children}
+                          </th>
+                        ),
+                        td: ({ children }) => (
+                          <td className="px-4 py-2 text-sm text-white/80 border-r border-white/10 last:border-r-0">
+                            {children}
+                          </td>
+                        ),
+                        code: ({ children, className }) => {
+                          const isInline = !className
+                          return isInline ? (
+                            <code className="px-1.5 py-0.5 bg-[#00ff85]/10 text-[#00ff85] rounded text-sm font-mono">
+                              {children}
+                            </code>
+                          ) : (
+                            <code className="block p-3 bg-black/30 rounded-lg text-sm text-white/90 font-mono overflow-x-auto mb-3">
+                              {children}
+                            </code>
+                          )
+                        },
+                        blockquote: ({ children }) => (
+                          <blockquote className="border-l-4 border-[#00ff85] pl-4 py-2 my-3 bg-[#00ff85]/5 italic text-white/80">
+                            {children}
+                          </blockquote>
+                        ),
+                        hr: () => <hr className="my-4 border-white/10" />,
                       }}
                     >
                       {message.content}
@@ -422,19 +465,19 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compact = false }) => 
               border: "1px solid rgba(0, 255, 133, 0.15)",
             }}
           >
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={compact ? "Ask anything..." : "Ask about your team, transfers, captaincy..."}
               className={cn(
                 "w-full bg-transparent text-white placeholder-white/30 focus:outline-none resize-none",
                 compact ? "px-3 py-2.5 text-sm" : "px-4 py-3"
               )}
-              rows={1}
-              disabled={sendMessageMutation.isPending}
-            />
+            rows={1}
+            disabled={sendMessageMutation.isPending}
+          />
           </div>
           <motion.button
             whileHover={{ scale: 1.05 }}

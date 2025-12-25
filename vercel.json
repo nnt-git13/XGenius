@@ -15,6 +15,11 @@
       "src": "/(.*)",
       "dest": "api/index.py"
     }
-  ]
+  ],
+  "functions": {
+    "api/**": {
+      "excludeFiles": "{.next,*.cache,node_modules,frontend,public,__pycache__,.git,tests,*.pyc,*.pyo,*.pyd,*.db,*.sqlite,*.csv,docs,scripts,historical,models_store}/**"
+    }
+  }
 }
 

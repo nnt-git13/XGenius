@@ -229,6 +229,13 @@ class AIGateway:
         Returns:
             Response dict with content, tool_calls, usage, etc.
         """
+        # Check if any provider is available
+        if not self.available_provider:
+            raise RuntimeError(
+                "No LLM provider initialized. Please set one of: GROQ_API_KEY, GEMINI_API_KEY, or OPENAI_API_KEY "
+                "in your environment variables."
+            )
+        
         if not model:
             model = self.select_model()
         
@@ -239,7 +246,7 @@ class AIGateway:
             model_config = self.MODELS.get(model)
         
         if not model_config:
-            raise ValueError(f"No model configuration found")
+            raise ValueError(f"No model configuration found for model: {model}")
         
         start_time = time.time()
         

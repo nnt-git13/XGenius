@@ -1,10 +1,4 @@
 {
-  "/copilot/page": "app/copilot/page.js",
-  "/settings/page": "app/settings/page.js",
-  "/team/page": "app/team/page.js",
-  "/player/[id]/page": "app/player/[id]/page.js",
-  "/compare/page": "app/compare/page.js",
-  "/analytics/page": "app/analytics/page.js",
-  "/transfers/page": "app/transfers/page.js",
-  "/optimize/page": "app/optimize/page.js"
+  "/page": "app/page.js",
+  "/dashboard/page": "app/dashboard/page.js"
 }

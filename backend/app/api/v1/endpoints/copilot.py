@@ -132,11 +132,26 @@ async def chat(
                 )
                 db.add(tool_metric)
                 
+        except HTTPException:
+            raise  # Re-raise HTTPExceptions
         except Exception as agent_error:
             logger.error(f"Agent processing failed: {agent_error}", exc_info=True)
+            
+            # Provide more helpful error messages based on error type
+            error_msg = str(agent_error).lower()
+            if "no llm provider" in error_msg or "api key" in error_msg:
+                answer = "I'm unable to process requests right now because no AI provider is configured. Please set GROQ_API_KEY, GEMINI_API_KEY, or OPENAI_API_KEY in your backend environment variables."
+            elif "rate limit" in error_msg or "quota" in error_msg:
+                answer = "I'm experiencing rate limits from the AI provider. Please try again in a moment."
+            elif "timeout" in error_msg:
+                answer = "The request took too long to process. Please try again with a simpler question."
+            else:
+                # Generic error - log full details but show user-friendly message
+                answer = f"I encountered an error processing your request: '{message}'. Please try again in a moment. If this persists, check the backend logs for details."
+            
             # Fallback to simple response
             response = {
-                "answer": f"I received your message: '{message}'. The agent system is currently unavailable, but I'm here to help. Please try again in a moment.",
+                "answer": answer,
                 "sources": [],
                 "actions": [],
                 "usage": {},

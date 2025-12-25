@@ -47,7 +47,7 @@ const features = [
     description: "Deep insights into player performance and team statistics",
     icon: BarChart3,
     gradient: "from-cyan-500 via-blue-500 to-cyan-500",
-    href: "/analytics",
+    href: "/dashboard",
     delay: 0.5,
   },
   {

@@ -14,7 +14,6 @@ import {
   X,
   BarChart3,
   Target,
-  Zap,
   Home,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -26,7 +25,6 @@ const navItems = [
   { href: "/optimize", label: "Optimize", icon: Target },
   { href: "/transfers", label: "Transfers", icon: TrendingUp },
   { href: "/copilot", label: "AI Copilot", icon: MessageSquare },
-  { href: "/analytics", label: "Analytics", icon: Zap },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 

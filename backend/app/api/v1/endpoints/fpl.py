@@ -2,7 +2,7 @@
 
 import logging
 from fastapi import APIRouter, HTTPException
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from app.services.fpl_api import FPLAPIService
 
@@ -157,6 +157,46 @@ async def get_entry_metadata(entry_id: int) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Unexpected error fetching entry metadata for {entry_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to fetch entry metadata: {str(e)}")
+    finally:
+        await svc.close()
+
+
+@router.get("/entry/{entry_id}")
+async def get_entry(entry_id: int) -> Dict[str, Any]:
+    """Get FPL entry basic info."""
+    svc = FPLAPIService()
+    try:
+        return await svc.fetch_entry_details(entry_id)
+    finally:
+        await svc.close()
+
+
+@router.get("/entry/{entry_id}/history")
+async def get_entry_history(entry_id: int) -> Dict[str, Any]:
+    """Get FPL entry history (points, chips, etc.)."""
+    svc = FPLAPIService()
+    try:
+        return await svc.fetch_entry_history(entry_id)
+    finally:
+        await svc.close()
+
+
+@router.get("/entry/{entry_id}/picks/{gameweek}")
+async def get_entry_picks(entry_id: int, gameweek: int) -> Dict[str, Any]:
+    """Get FPL entry picks for a specific gameweek."""
+    svc = FPLAPIService()
+    try:
+        return await svc.fetch_entry_picks(entry_id, gameweek)
+    finally:
+        await svc.close()
+
+
+@router.get("/fixtures")
+async def get_fixtures() -> List[Dict[str, Any]]:
+    """Get all fixtures for the current season."""
+    svc = FPLAPIService()
+    try:
+        return await svc.fetch_fixtures()
     finally:
         await svc.close()
 

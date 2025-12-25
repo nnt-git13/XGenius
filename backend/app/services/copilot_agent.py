@@ -130,7 +130,7 @@ class CopilotAgent:
             elif state.step == AgentStep.RETRIEVE:
                 await self._retrieve(state)
             elif state.step == AgentStep.ACT:
-                await self._act(state, user_id)
+                await self._act(state, user_id, team_id)
             elif state.step == AgentStep.VERIFY:
                 await self._verify(state)
             elif state.step == AgentStep.RESPOND:
@@ -155,22 +155,39 @@ CRITICAL RULES - YOU MUST FOLLOW THESE:
 5. **VERIFY DATA** - If asked about a specific player, always use get_player_details or search_players to verify they exist and get current stats.
 
 You have access to tools that let you:
+
+**PLAYER DATA TOOLS:**
 - **search_players**: Search for players by name, position, team, or attributes
 - **get_player_details**: Get detailed stats for a specific player
-- **find_player_replacements**: Find replacement options for a player (USE THIS when asked "who should I replace X with" or "alternatives to X")
-- **get_team_fixtures**: Get upcoming fixtures for a team
-- **get_top_players**: Get top performers by position
+- **find_player_replacements**: Find replacement options for a player
 - **compare_players**: Compare two players side-by-side
-- **get_transfer_suggestions**: Get AI-powered transfer recommendations
-- **get_captain_picks**: Get captain recommendations
+- **get_top_players**: Get top performers by position
 - **get_differential_picks**: Find low-ownership high-potential players
 
+**USER'S TEAM TOOLS (use when user asks about "my team", "my squad", "my players"):**
+- **get_my_squad**: Get the user's current squad with all player details
+- **analyze_my_squad**: Analyze the squad for strengths, weaknesses, and recommendations
+- **get_squad_issues**: Find injuries, suspensions, poor form in the squad
+- **get_my_transfer_history**: Get the user's recent transfers
+- **get_my_fpl_summary**: Get dashboard info (rank, points, chips, team value)
+
+**OTHER TOOLS:**
+- **get_team_fixtures**: Get upcoming fixtures for a Premier League team
+- **get_transfer_suggestions**: Get AI-powered transfer recommendations
+- **get_captain_picks**: Get captain recommendations
+- **get_gameweek_info**: Get current gameweek status and deadline
+
 TOOL USAGE GUIDE:
+- When asked about "my team", "my squad", "my players" → Use get_my_squad or analyze_my_squad
+- When asked about "my rank", "my points", "how am I doing" → Use get_my_fpl_summary
+- When asked about injuries or issues in their team → Use get_squad_issues
 - When asked about "replacements" or "alternatives" → Use find_player_replacements
 - When asked about a specific player's stats → Use get_player_details
 - When asked to compare players → Use compare_players
 - When asked about best players by position → Use get_top_players or search_players
 - When asked about fixtures → Use get_team_fixtures
+
+IMPORTANT: When using tools that require team_id, use the team_id from the context if available.
 
 IMPORTANT: Always provide specific, detailed answers. Never give generic responses like "consider transferring players" or "check your team". Instead:
 
@@ -181,15 +198,37 @@ IMPORTANT: Always provide specific, detailed answers. Never give generic respons
 5. **Explain Reasoning**: Always explain WHY you're making a recommendation with 2-3 specific reasons
 6. **Be Actionable**: Give clear next steps the user can take
 
-Example of a GOOD response:
-"Based on your current squad, I recommend captaining Mohamed Salah this gameweek. Here's why:
-- Liverpool face Brighton at home (FDR: 2), a favorable fixture
-- Salah has 3 goals and 2 assists in his last 5 games
-- He's on penalties and has a strong home record this season
-Next steps: Set Salah as captain and consider starting Tsimikas if you have him, as Liverpool's defense has been solid at home."
+**FORMATTING REQUIREMENTS:**
+- Always use markdown formatting for better readability
+- Use **bold** for player names, team names, and key metrics
+- Use headers (##) for major sections
+- Use bullet points (-) or numbered lists (1.) for recommendations
+- Use tables for comparisons or rankings
+- Use code blocks for specific stats or data when helpful
 
-Example of a BAD response (too generic):
-"Consider selecting a player with good form and easy fixtures as your captain."
+Example of a GOOD formatted response:
+```markdown
+## Captain Recommendation
+
+I recommend **Mohamed Salah** (Liverpool) as your captain this gameweek.
+
+### Why Salah?
+- **Fixture**: Liverpool vs Brighton (H) - FDR: 2 ⭐
+- **Form**: 3 goals, 2 assists in last 5 games
+- **Bonus**: On penalties, strong home record
+- **Expected Points**: 7.2
+
+### Alternative Options
+1. **Erling Haaland** (Man City) - 6.8 EP, but tougher fixture
+2. **Bukayo Saka** (Arsenal) - 6.5 EP, good form
+
+### Next Steps
+- Set Salah as captain
+- Consider starting Tsimikas (DEF) - Liverpool's defense is solid at home
+```
+
+Example of a BAD response (unformatted blob):
+"Based on your current squad, I recommend captaining Mohamed Salah this gameweek. Here's why: Liverpool face Brighton at home (FDR: 2), a favorable fixture. Salah has 3 goals and 2 assists in his last 5 games. He's on penalties and has a strong home record this season. Next steps: Set Salah as captain and consider starting Tsimikas if you have him, as Liverpool's defense has been solid at home."
 
 Current Context:"""
         
@@ -200,7 +239,23 @@ Current Context:"""
         else:
             prompt += "\nNo specific context available - use tools to gather relevant information about the user's question."
         
-        prompt += "\n\nRemember: Always be specific, use tools when needed, and provide actionable advice with clear reasoning."
+        prompt += """
+
+CRITICAL: When you use tools and get results, you MUST provide a natural language answer. Never show tool calls or code snippets to the user. Always synthesize tool results into a clear, conversational response.
+
+Example:
+- User asks: "Rank my forwards"
+- You call get_my_squad tool, get results
+- You respond: "Based on your current squad, here are your forwards ranked by form:
+  1. Erling Haaland (Man City) - Form: 6.5, Expected Points: 7.2
+  2. Ollie Watkins (Aston Villa) - Form: 5.8, Expected Points: 6.5
+  3. Darwin Núñez (Liverpool) - Form: 4.2, Expected Points: 5.1
+  
+  I recommend starting Haaland and Watkins, with Núñez as a strong bench option."
+
+NOT: "get_my_squad() returned: [data...]"
+
+Remember: Always be specific, use tools when needed, and provide actionable advice with clear reasoning."""
         
         return prompt
     
@@ -237,12 +292,17 @@ Current Context:"""
     async def _act(
         self,
         state: AgentState,
-        user_id: Optional[int]
+        user_id: Optional[int],
+        team_id: Optional[int] = None
     ):
         """Action step - execute tools."""
         if not state.tool_calls:
             state.step = AgentStep.RESPOND
             return
+        
+        # Get team_id from context if not provided
+        if not team_id and state.context.get("team"):
+            team_id = state.context["team"].get("team_id")
         
         # Execute each tool call
         for tool_call in state.tool_calls:
@@ -251,6 +311,12 @@ Current Context:"""
                 params = json.loads(tool_call["function"]["arguments"])
             except:
                 params = {}
+            
+            # Inject team_id for team-related tools if not provided
+            team_tools = ["get_my_squad", "analyze_my_squad", "get_squad_issues", 
+                         "get_my_transfer_history", "get_my_fpl_summary"]
+            if tool_name in team_tools and "team_id" not in params and team_id:
+                params["team_id"] = team_id
             
             tool = self.tool_registry.get_tool(tool_name)
             if not tool:
@@ -283,7 +349,7 @@ Current Context:"""
             else:
                 result = await self.tool_registry.execute_tool(tool_name, params, dry_run=False)
                 # Truncate large tool results to avoid token limits
-                result_str = json.dumps(result)
+                result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
                 max_result_len = 3000
                 if len(result_str) > max_result_len:
                     result_str = result_str[:max_result_len] + '..."}'
@@ -294,7 +360,7 @@ Current Context:"""
                     "content": result_str,
                 })
         
-        # Clear tool calls
+        # Clear tool calls - we've executed them
         state.tool_calls = []
         state.step = AgentStep.VERIFY
     
@@ -347,14 +413,60 @@ Current Context:"""
         # Truncate messages to fit within token limits
         truncated_messages = self._truncate_messages(state.messages)
         
+        # Check if we have tool results - if so, we need to generate a response based on them
+        has_tool_results = any(msg.get("role") == "tool" for msg in truncated_messages)
+        
+        # If we have tool results, add explicit instruction to synthesize them
+        if has_tool_results:
+            # Find the original user question
+            user_question = None
+            for msg in reversed(truncated_messages):
+                if msg.get("role") == "user":
+                    user_question = msg.get("content", "")
+                    break
+            
+            # Add a follow-up instruction to ensure natural language response with markdown formatting
+            synthesis_prompt = {
+                "role": "user",
+                "content": f"Based on the tool results above, please provide a clear, helpful answer to: '{user_question}'. Use the data from the tools to give specific recommendations. Format your response using markdown:\n- Use **bold** for player names, teams, and key metrics\n- Use ## headers for major sections\n- Use bullet points (-) or numbered lists for recommendations\n- Use tables for comparisons or rankings\n- Make it visually organized and easy to scan\n\nDo not show tool calls, code, or raw JSON - just provide a well-formatted, natural response."
+            }
+            truncated_messages.append(synthesis_prompt)
+        
         # Use smart model for final response
+        # Don't pass tools here - we want a text response, not more tool calls
         response = await self.ai_gateway.chat(
             messages=truncated_messages,
             model=self.ai_gateway.select_model(task_complexity="moderate"),
             temperature=0.7,
+            tools=None,  # Don't allow more tool calls - just generate answer
         )
         
         content = response.get("content", "")
+        
+        # Clean up any remaining tool call artifacts
+        if content:
+            # Remove any tool call syntax that might have leaked through
+            content = content.replace("</python_tag|>", "")
+            content = content.replace("get_player_details(", "")
+            # Remove any standalone function calls
+            import re
+            content = re.sub(r'[a-z_]+\([^)]*\)', '', content)
+            content = content.strip()
+        
+        # If content is still empty or problematic, generate a fallback
+        if not content or len(content) < 10:
+            # Force a proper response
+            fallback_messages = truncated_messages[:-1] if has_tool_results else truncated_messages
+            fallback_messages.append({
+                "role": "user",
+                "content": "Please provide a clear, natural language answer. Summarize the key information from the tool results in a helpful, conversational way."
+            })
+            response = await self.ai_gateway.chat(
+                messages=fallback_messages,
+                model=self.ai_gateway.select_model(task_complexity="moderate"),
+                temperature=0.7,
+            )
+            content = response.get("content", "I've processed your request. Please check the tool results above for details.")
         
         # Extract sources from context
         sources = []
