@@ -38,11 +38,13 @@ class ToolRegistry:
     """Registry of available tools for the copilot."""
     
     FPL_API_BASE = "https://fantasy.premierleague.com/api"
+    CACHE_TTL_SECONDS = 60  # Cache expires after 60 seconds for fresh data
     
     def __init__(self, db: Session):
         self.db = db
         self.tools: Dict[str, ToolDefinition] = {}
         self._fpl_cache: Dict[str, Any] = {}
+        self._fpl_cache_timestamps: Dict[str, float] = {}
         self._register_default_tools()
     
     def _register_default_tools(self):
@@ -229,6 +231,28 @@ class ToolRegistry:
                 category="analysis",
             )
         )
+        
+        # Find player replacements
+        self.register(
+            ToolDefinition(
+                name="find_player_replacements",
+                description="Find replacement options for a specific player. ALWAYS use this tool when user asks for replacements or alternatives to a player.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "player_name": {"type": "string", "description": "Name of the player to replace"},
+                        "max_price": {"type": "number", "description": "Maximum price for replacement (optional, defaults to current player price + 1.0)"},
+                        "min_form": {"type": "number", "default": 3.0, "description": "Minimum form rating"},
+                        "limit": {"type": "integer", "default": 5, "description": "Number of replacements to return"},
+                    },
+                    "required": ["player_name"],
+                },
+                risk_level=ToolRisk.LOW,
+                requires_confirmation=False,
+                handler=self._find_player_replacements,
+                category="optimization",
+            )
+        )
     
     def register(self, tool: ToolDefinition):
         """Register a tool."""
@@ -288,26 +312,56 @@ class ToolRegistry:
             }
     
     async def _fetch_fpl_bootstrap(self) -> Dict[str, Any]:
-        """Fetch and cache FPL bootstrap-static data."""
-        if "bootstrap" in self._fpl_cache:
-            return self._fpl_cache["bootstrap"]
+        """Fetch and cache FPL bootstrap-static data with TTL."""
+        import time
+        current_time = time.time()
         
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{self.FPL_API_BASE}/bootstrap-static/")
-            data = response.json()
-            self._fpl_cache["bootstrap"] = data
-            return data
+        # Check if cache is valid
+        if "bootstrap" in self._fpl_cache:
+            cache_time = self._fpl_cache_timestamps.get("bootstrap", 0)
+            if current_time - cache_time < self.CACHE_TTL_SECONDS:
+                return self._fpl_cache["bootstrap"]
+        
+        # Fetch fresh data
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{self.FPL_API_BASE}/bootstrap-static/", timeout=15)
+                data = response.json()
+                self._fpl_cache["bootstrap"] = data
+                self._fpl_cache_timestamps["bootstrap"] = current_time
+                logger.info(f"Fetched fresh FPL bootstrap data: {len(data.get('elements', []))} players")
+                return data
+        except Exception as e:
+            logger.error(f"Failed to fetch FPL bootstrap: {e}")
+            # Return cached data if available, even if expired
+            if "bootstrap" in self._fpl_cache:
+                return self._fpl_cache["bootstrap"]
+            return {}
     
     async def _fetch_fixtures(self) -> List[Dict[str, Any]]:
-        """Fetch and cache FPL fixtures."""
-        if "fixtures" in self._fpl_cache:
-            return self._fpl_cache["fixtures"]
+        """Fetch and cache FPL fixtures with TTL."""
+        import time
+        current_time = time.time()
         
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{self.FPL_API_BASE}/fixtures/")
-            data = response.json()
-            self._fpl_cache["fixtures"] = data
-            return data
+        # Check if cache is valid
+        if "fixtures" in self._fpl_cache:
+            cache_time = self._fpl_cache_timestamps.get("fixtures", 0)
+            if current_time - cache_time < self.CACHE_TTL_SECONDS:
+                return self._fpl_cache["fixtures"]
+        
+        # Fetch fresh data
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{self.FPL_API_BASE}/fixtures/", timeout=15)
+                data = response.json()
+                self._fpl_cache["fixtures"] = data
+                self._fpl_cache_timestamps["fixtures"] = current_time
+                return data
+        except Exception as e:
+            logger.error(f"Failed to fetch FPL fixtures: {e}")
+            if "fixtures" in self._fpl_cache:
+                return self._fpl_cache["fixtures"]
+            return []
     
     async def _fetch_player_history(self, player_id: int) -> Dict[str, Any]:
         """Fetch player history."""
@@ -734,4 +788,116 @@ class ToolRegistry:
                 "min_form": min_form,
                 "position": position,
             },
+        }
+    
+    async def _find_player_replacements(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Find replacement options for a specific player using ONLY current FPL data."""
+        player_name = params.get("player_name", "")
+        
+        # First, find the player to be replaced
+        bootstrap = await self._fetch_fpl_bootstrap()
+        elements = bootstrap.get("elements", [])
+        teams = {t["id"]: t for t in bootstrap.get("teams", [])}
+        
+        # Search for the player
+        player_name_lower = player_name.lower()
+        original_player = None
+        for p in elements:
+            if (player_name_lower in p.get("web_name", "").lower() or 
+                player_name_lower in f"{p.get('first_name', '')} {p.get('second_name', '')}".lower()):
+                original_player = p
+                break
+        
+        if not original_player:
+            # Player not found in current FPL data - they might not be in the league
+            return {
+                "error": f"Player '{player_name}' not found in current FPL data",
+                "suggestion": "This player may not be in the Premier League this season. Please check the spelling or try a different player.",
+                "note": "Only players currently registered in FPL can be searched."
+            }
+        
+        # Get player details
+        reverse_position_map = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
+        position = reverse_position_map.get(original_player.get("element_type"), "?")
+        original_price = original_player.get("now_cost", 0) / 10
+        original_team = teams.get(original_player.get("team"), {})
+        
+        # Determine max price for replacements
+        max_price = params.get("max_price", original_price + 1.0)
+        min_form = params.get("min_form", 3.0)
+        limit = params.get("limit", 5)
+        
+        # Find replacements - same position, different player, within budget
+        replacements = []
+        for p in elements:
+            # Skip the original player
+            if p.get("id") == original_player.get("id"):
+                continue
+            
+            # Must be same position
+            if p.get("element_type") != original_player.get("element_type"):
+                continue
+            
+            # Must be within budget
+            price = p.get("now_cost", 0) / 10
+            if price > max_price:
+                continue
+            
+            # Check form
+            form = float(p.get("form", 0))
+            if form < min_form:
+                continue
+            
+            # Must be available (not injured/suspended)
+            status = p.get("status", "a")
+            if status not in ["a", "d"]:  # 'a' = available, 'd' = doubtful but might play
+                continue
+            
+            team_info = teams.get(p.get("team"), {})
+            ep_next = float(p.get("ep_next", 0))
+            
+            # Calculate replacement score
+            replacement_score = form * 0.4 + ep_next * 0.4 + (p.get("total_points", 0) / 10) * 0.2
+            
+            replacements.append({
+                "id": p.get("id"),
+                "name": p.get("web_name"),
+                "full_name": f"{p.get('first_name')} {p.get('second_name')}",
+                "position": position,
+                "team": team_info.get("name", "Unknown"),
+                "team_short": team_info.get("short_name", "?"),
+                "price": price,
+                "price_diff": round(price - original_price, 1),
+                "form": form,
+                "total_points": p.get("total_points", 0),
+                "expected_points": ep_next,
+                "goals": p.get("goals_scored", 0),
+                "assists": p.get("assists", 0),
+                "minutes": p.get("minutes", 0),
+                "selected_by_percent": float(p.get("selected_by_percent", 0)),
+                "status": "Available" if status == "a" else p.get("news", "Doubtful"),
+                "replacement_score": round(replacement_score, 2),
+            })
+        
+        # Sort by replacement score
+        replacements.sort(key=lambda x: x["replacement_score"], reverse=True)
+        
+        return {
+            "original_player": {
+                "name": original_player.get("web_name"),
+                "full_name": f"{original_player.get('first_name')} {original_player.get('second_name')}",
+                "position": position,
+                "team": original_team.get("name", "Unknown"),
+                "price": original_price,
+                "form": float(original_player.get("form", 0)),
+                "total_points": original_player.get("total_points", 0),
+                "status": "Available" if original_player.get("status") == "a" else original_player.get("news", "Unavailable"),
+            },
+            "replacements": replacements[:limit],
+            "search_criteria": {
+                "max_price": max_price,
+                "min_form": min_form,
+                "position": position,
+            },
+            "note": f"Found {len(replacements)} potential replacements. Showing top {min(limit, len(replacements))} by form and expected points."
         }
