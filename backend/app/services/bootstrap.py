@@ -1,10 +1,17 @@
 from __future__ import annotations
 import os
-import pandas as pd
 from sqlalchemy.orm import Session
 from app.db import db
 from app.legacy.models import Player
 from .scoring import compute_base_score, form_component, fixtures_component, odds_component, upsert_score_object
+
+# Make pandas optional for Vercel deployment
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    pd = None  # type: ignore
 
 
 def bootstrap_scores(season: str, csv_path: str):

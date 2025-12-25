@@ -3,9 +3,16 @@ Advanced XG Score calculation service.
 Combines ML predictions, fixture difficulty, Monte Carlo simulations, etc.
 """
 from __future__ import annotations
-import numpy as np
 from typing import List
 from sqlalchemy.orm import Session
+
+# Make numpy optional for Vercel deployment
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    np = None  # type: ignore
 
 from app.api.v1.schemas.team import XGScoreResponse, SquadMember
 from app.models import Player

@@ -1,16 +1,23 @@
 from __future__ import annotations
 import math
-import pandas as pd
-from typing import Dict
+from typing import Dict, Any, Union
 from sqlalchemy.orm import Session
 from app.legacy.models import Player, ScoreObject
+
+# Make pandas optional for Vercel deployment
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    pd = None  # type: ignore
 
 
 # Heuristics combining form, upcoming fixtures difficulty, and odds
 # In practice you may integrate FDRs and bookmaker odds via separate tables/APIs.
 
 
-def compute_base_score(row: pd.Series) -> float:
+def compute_base_score(row: Union[Any, Dict[str, Any]]) -> float:
     # Example: xPts from CSV (if present) + scaled xG/xa + minutes reliability
     xpts = row.get("expected_points", 0.0)
     xg = row.get("xg", 0.0)
