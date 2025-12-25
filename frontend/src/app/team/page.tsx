@@ -17,7 +17,6 @@ import { TeamEvaluationResponse, PlayerDetail, FORMATIONS, Formation } from "@/t
 import { PitchCard } from "@/components/team/PitchCard"
 import { EnhancedBenchView } from "@/components/team/EnhancedBenchView"
 import { PlayerDetailsPanel } from "@/components/team/PlayerDetailsPanel"
-import { CopilotPanel } from "@/components/team/CopilotPanel"
 import { TransferSuggestionsModal } from "@/components/team/TransferSuggestionsModal"
 import { WatchlistPanel } from "@/components/team/WatchlistPanel"
 import { cn } from "@/lib/utils"
@@ -930,7 +929,6 @@ export default function MyTeamPage() {
               />
 
               <WatchlistPanel />
-              <CopilotPanel selectedPlayer={selectedPlayer} />
             </div>
           </div>
         )}
