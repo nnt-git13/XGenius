@@ -1,12 +1,14 @@
 # Exclude files from Vercel deployment to reduce function size
 # Based on: https://vercel.com/kb/guide/troubleshooting-function-250mb-limit
 
-# Frontend build artifacts (but keep source for building)
+# Frontend build artifacts (exclude from API function, but allow for Next.js build)
+# Note: Vercel needs frontend source files to build Next.js
 frontend/.next/
 frontend/node_modules/
 frontend/.cache/
 frontend/test-results/
 frontend/coverage/
+frontend/.vercel/
 
 # Python cache and build artifacts
 **/__pycache__/
