@@ -17,10 +17,11 @@ python-multipart==0.0.9
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
-# Essential ML (lightweight) - only what's actually used
-# Using Python 3.12 compatible versions (pre-built wheels, no compilation needed)
-numpy==1.26.4  # Python 3.12 compatible (has pre-built wheels)
-pandas==2.2.2  # Python 3.12 compatible (has pre-built wheels)
+# Essential ML (lightweight) - REMOVED to stay under 250MB
+# numpy and pandas are large (~50-80MB combined), making them optional
+# The neural predictor will use pure Python fallbacks when these are not available
+# numpy==1.26.4  # ~30MB - removed for Vercel
+# pandas==2.2.2  # ~50MB - removed for Vercel
 # scikit-learn is large (~100MB with scipy), making it optional
 # The neural predictor can fall back to heuristic predictions without sklearn
 # scikit-learn==1.5.1  # Would require scipy (~50MB), removed to save space

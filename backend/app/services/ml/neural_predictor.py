@@ -3,10 +3,23 @@ Neural Network based player points predictor.
 Uses multi-dimensional features for prediction.
 """
 from __future__ import annotations
-import numpy as np
-import pandas as pd
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
+
+# Make numpy/pandas optional for Vercel deployment (large dependencies ~50-80MB)
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    np = None  # type: ignore
+
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    pd = None  # type: ignore
 
 # Make sklearn optional for Vercel deployment (large dependency)
 try:
@@ -73,13 +86,27 @@ class NeuralPointsPredictor:
         if not player_ids:
             return {"predictions": []}
         
+        # Check if pandas/numpy are available
+        if not PANDAS_AVAILABLE or not NUMPY_AVAILABLE:
+            logger.info("Pandas/numpy not available, using pure Python fallback predictions")
+            return {"predictions": self._fallback_predictions(player_ids)}
+        
         try:
             # Build features
             features_df = self.feature_builder.build_features(
                 player_ids, season, gameweek, horizon
             )
             
-            if features_df.empty:
+            # Check if empty (DataFrame or list)
+            is_empty = False
+            if PANDAS_AVAILABLE and hasattr(features_df, 'empty'):
+                is_empty = features_df.empty
+            elif isinstance(features_df, list):
+                is_empty = len(features_df) == 0
+            else:
+                is_empty = True
+            
+            if is_empty:
                 logger.warning("No features built for any players")
                 return {"predictions": self._fallback_predictions(player_ids)}
             
@@ -93,22 +120,41 @@ class NeuralPointsPredictor:
             return {"predictions": self._fallback_predictions(player_ids)}
     
     def _predict_with_model(
-        self, features_df: pd.DataFrame, horizon: int
+        self, features_df: Any, horizon: int
     ) -> List[Dict[str, Any]]:
         """Generate predictions using the model or heuristics."""
         predictions = []
         
-        for _, row in features_df.iterrows():
-            player_id = int(row["player_id"])
+        # Handle both DataFrame and list of dicts
+        if PANDAS_AVAILABLE and hasattr(features_df, 'iterrows'):
+            rows = features_df.iterrows()
+        elif isinstance(features_df, list):
+            rows = enumerate(features_df)
+        else:
+            return self._fallback_predictions([])
+        
+        for idx, row in rows:
+            # Handle both Series and dict
+            if PANDAS_AVAILABLE and hasattr(row, 'get'):
+                player_id = int(row.get("player_id", 0))
+                row_dict = row.to_dict() if hasattr(row, 'to_dict') else dict(row)
+            elif isinstance(row, dict):
+                player_id = int(row.get("player_id", 0))
+                row_dict = row
+            else:
+                continue
+            
+            if player_id == 0:
+                continue
             
             # Use heuristic-based prediction (can be replaced with trained model)
-            predicted_points = self._heuristic_prediction(row, horizon)
+            predicted_points = self._heuristic_prediction(row_dict, horizon)
             
             # Calculate confidence and risk
-            confidence, risk = self._calculate_confidence_risk(row)
+            confidence, risk = self._calculate_confidence_risk(row_dict)
             
             # Calculate captaincy upside
-            captaincy_upside = self._calculate_captaincy_upside(row, predicted_points)
+            captaincy_upside = self._calculate_captaincy_upside(row_dict, predicted_points)
             
             predictions.append({
                 "player_id": player_id,
@@ -117,15 +163,15 @@ class NeuralPointsPredictor:
                 "risk_score": round(risk, 3),
                 "captaincy_upside": round(captaincy_upside, 2),
                 "features": {
-                    "form": round(row.get("form_weighted", 0), 2),
-                    "fixture_difficulty": round(row.get("fixture_difficulty_1", 3), 1),
-                    "fitness": round(row.get("chance_playing_this", 1) * 100, 0),
+                    "form": round(row_dict.get("form_weighted", 0), 2),
+                    "fixture_difficulty": round(row_dict.get("fixture_difficulty_1", 3), 1),
+                    "fitness": round(row_dict.get("chance_playing_this", 1) * 100, 0),
                 }
             })
         
         return predictions
     
-    def _heuristic_prediction(self, row: pd.Series, horizon: int) -> float:
+    def _heuristic_prediction(self, row: Dict[str, Any], horizon: int) -> float:
         """
         Sophisticated heuristic-based prediction using weighted features.
         Prioritizes current season performance, then form, fixtures, and other factors.
@@ -194,7 +240,10 @@ class NeuralPointsPredictor:
             form_score = season_score  # Fall back to season average
         
         # Form trend bonus/penalty (improving vs declining)
-        form_trend_factor = 1.0 + np.clip(form_trend, -3, 3) * 0.04
+        # Pure Python clip function
+        def clip(value, min_val, max_val):
+            return max(min_val, min(value, max_val))
+        form_trend_factor = 1.0 + clip(form_trend, -3, 3) * 0.04
         form_score *= form_trend_factor
         
         # =================================================================
@@ -237,7 +286,7 @@ class NeuralPointsPredictor:
         # If underperforming xG, expect some regression upward
         # If overperforming xG, expect some regression downward
         if points_per_game > 0 and xg_per_game > 0:
-            xg_regression = np.clip(-xg_overperformance * 0.1, -1.0, 1.0)
+            xg_regression = max(-1.0, min(1.0, -xg_overperformance * 0.1))
         else:
             xg_regression = 0
         
@@ -309,7 +358,7 @@ class NeuralPointsPredictor:
             base_prediction = max(base_prediction, min_expected)
         
         # Clamp to reasonable range (0.5 to 15 per GW)
-        predicted = np.clip(base_prediction, 0.5, 15.0)
+        predicted = max(0.5, min(15.0, base_prediction))
         
         # =================================================================
         # HORIZON ADJUSTMENT
@@ -322,7 +371,7 @@ class NeuralPointsPredictor:
         
         return float(predicted)
     
-    def _calculate_confidence_risk(self, row: pd.Series) -> Tuple[float, float]:
+    def _calculate_confidence_risk(self, row: Dict[str, Any]) -> Tuple[float, float]:
         """Calculate prediction confidence and risk score."""
         # Confidence based on data quality
         games_played = row.get("games_played", 0)
@@ -339,7 +388,7 @@ class NeuralPointsPredictor:
         availability_factor = chance_playing
         
         confidence = (games_factor * 0.3 + consistency_factor * 0.4 + availability_factor * 0.3)
-        confidence = np.clip(confidence, 0.1, 0.95)
+        confidence = max(0.1, min(0.95, confidence))
         
         # Risk score
         injury_risk = row.get("injury_risk", 0)
@@ -351,11 +400,11 @@ class NeuralPointsPredictor:
             blank_rate * 0.3 +
             (fixture_diff - 1) / 4 * 0.3
         )
-        risk = np.clip(risk, 0.0, 1.0)
+        risk = max(0.0, min(1.0, risk))
         
         return float(confidence), float(risk)
     
-    def _calculate_captaincy_upside(self, row: pd.Series, predicted: float) -> float:
+    def _calculate_captaincy_upside(self, row: Dict[str, Any], predicted: float) -> float:
         """Calculate captaincy upside potential."""
         # Higher ceiling = higher captaincy upside
         ceiling = row.get("ceiling", 0)
@@ -432,16 +481,27 @@ class NeuralPointsPredictor:
         
         # Calculate metrics
         predictions = self.model.predict(X_scaled)
-        mse = np.mean((predictions - y) ** 2)
-        mae = np.mean(np.abs(predictions - y))
-        r2 = 1 - mse / np.var(y)
+        if NUMPY_AVAILABLE:
+            mse = np.mean((predictions - y) ** 2)
+            mae = np.mean(np.abs(predictions - y))
+            r2 = 1 - mse / np.var(y)
+            rmse = float(np.sqrt(mse))
+        else:
+            # Pure Python fallback
+            n = len(predictions)
+            mse = sum((p - t) ** 2 for p, t in zip(predictions, y)) / n
+            mae = sum(abs(p - t) for p, t in zip(predictions, y)) / n
+            mean_y = sum(y) / n
+            var_y = sum((t - mean_y) ** 2 for t in y) / n
+            r2 = 1 - mse / var_y if var_y > 0 else 0.0
+            rmse = mse ** 0.5
         
         # Save model
         self._save_model()
         
         return {
             "mse": float(mse),
-            "rmse": float(np.sqrt(mse)),
+            "rmse": float(rmse),
             "mae": float(mae),
             "r2": float(r2),
             "n_samples": len(y),

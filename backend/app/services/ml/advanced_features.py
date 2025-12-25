@@ -3,12 +3,25 @@ Advanced feature engineering for ML-based player points prediction.
 Multi-dimensional features for neural network input.
 """
 from __future__ import annotations
-import pandas as pd
-import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from datetime import datetime, timedelta
+
+# Make numpy/pandas optional for Vercel deployment
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    pd = None  # type: ignore
+
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    np = None  # type: ignore
 
 from app.models import Player, WeeklyScore
 from app.models.fixture import Fixture, Team
@@ -42,7 +55,7 @@ class AdvancedFeatureBuilder:
         season: str,
         gameweek: int,
         horizon: int = 1,
-    ) -> pd.DataFrame:
+    ) -> Any:  # Returns pd.DataFrame if pandas available, else list of dicts
         """
         Build comprehensive feature matrix for players.
         
@@ -71,7 +84,13 @@ class AdvancedFeatureBuilder:
                 continue
         
         if not features_list:
-            return pd.DataFrame()
+            if PANDAS_AVAILABLE:
+                return pd.DataFrame()
+            return []  # Return empty list if pandas not available
+        
+        if not PANDAS_AVAILABLE:
+            # Return list of dicts instead of DataFrame
+            return features_list
         
         df = pd.DataFrame(features_list)
         
