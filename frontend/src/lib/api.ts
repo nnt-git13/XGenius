@@ -1,7 +1,11 @@
 import axios from "axios";
 import { useLoadingStore } from "@/store/useLoadingStore";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+// Use relative URL in production (Vercel), localhost in development
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 
+  (typeof window !== 'undefined' && window.location.origin 
+    ? `${window.location.origin}/api/v1`
+    : "http://localhost:8000/api/v1");
 
 console.log("API URL:", API_URL); // Debug log
 
