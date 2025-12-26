@@ -5,7 +5,7 @@
       "src": "frontend/package.json",
       "use": "@vercel/next",
       "config": {
-        "zeroConfig": false
+        "distDir": ".next"
       }
     },
     {
@@ -17,6 +17,9 @@
     {
       "src": "/api/(.*)",
       "dest": "/api/index.py"
+    },
+    {
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
