@@ -1,10 +1,8 @@
 {
   "version": 2,
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/.next",
   "builds": [
-    {
-      "src": "frontend/package.json",
-      "use": "@vercel/next"
-    },
     {
       "src": "api/index.py",
       "use": "@vercel/python"
@@ -14,6 +12,9 @@
     {
       "src": "/api/(.*)",
       "dest": "/api/index.py"
+    },
+    {
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
