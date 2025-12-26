@@ -10,6 +10,13 @@
     {
       "src": "/api/(.*)",
       "dest": "/../api/index.py"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
     }
   ]
 }
