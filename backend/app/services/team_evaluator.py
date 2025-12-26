@@ -186,7 +186,7 @@ class TeamEvaluator:
                         captain_id: Optional[int] = None
                         vice_captain_id: Optional[int] = None
                         expected_points_total = 0.0
-                        
+
                         # Batch fetch ML predictions for all players at once (more efficient)
                         element_ids_for_pred = [pick.get("element") for pick in picks_sorted if pick.get("element")]
                         element_id_to_db_id = {}
@@ -273,10 +273,10 @@ class TeamEvaluator:
                                 predicted_points = pred_lookup[db_id]
                             else:
                                 # Fallback to FPL ep_this
-                                ep_this = el.get("ep_this")
-                                try:
+                            ep_this = el.get("ep_this")
+                            try:
                                     predicted_points = float(ep_this) if ep_this is not None else 0.0
-                                except Exception:
+                            except Exception:
                                     predicted_points = 0.0
                             
                             if is_starting:
@@ -289,7 +289,7 @@ class TeamEvaluator:
 
                             # Get ML prediction for this player (for expected_points field)
                             player_predicted_points = predicted_points
-                            
+
                             players_data.append(PlayerDetail(
                                 # Use FPL element id as stable identifier for UI selection
                                 id=int(element_id),

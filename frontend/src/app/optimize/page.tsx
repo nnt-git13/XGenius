@@ -196,7 +196,7 @@ export default function OptimizePage() {
                         <div className="flex-1 min-w-0">
                           <div className={cn("font-medium text-sm", isActive ? "text-white" : "text-white/70")}>
                             {opt.label}
-                          </div>
+                        </div>
                           <div className="text-xs text-white/40">{opt.desc}</div>
                         </div>
                         {isActive && (
@@ -258,7 +258,7 @@ export default function OptimizePage() {
                     Our optimizer uses ML predictions to analyze player performance, 
                     fixture difficulty, and form to find the best squad configuration 
                     for your selected time horizon.
-                  </p>
+                </p>
                 </div>
               </div>
             </GlassCard>
@@ -291,7 +291,7 @@ export default function OptimizePage() {
                 <div className="text-center max-w-md">
                   <div className="h-14 w-14 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
                     <AlertCircle className="h-7 w-7 text-red-400" />
-                  </div>
+                </div>
                   <h3 className="text-xl font-bold text-white mb-2">Optimization Failed</h3>
                   <p className="text-white/60 text-sm mb-4">
                     {(optimizeMutation.error as any)?.message || "An error occurred"}

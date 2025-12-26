@@ -5,6 +5,7 @@ FastAPI / SQLAlchemy (ORM) database setup: engine, SessionLocal, Base, and helpe
 from __future__ import annotations
 
 import logging
+import os
 from typing import Generator
 
 from sqlalchemy import create_engine
@@ -46,11 +47,27 @@ Base = declarative_base()
 
 def get_db() -> Generator[Session, None, None]:
     """Dependency for getting database session."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    # On Vercel, database might not be available - handle gracefully
+    if os.environ.get("VERCEL"):
+        # Return a mock session or raise a clear error
+        # For now, we'll try to create a session but handle errors gracefully
+        try:
+            db = SessionLocal()
+            try:
+                yield db
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"Database connection failed on Vercel: {e}")
+            # Return None or raise HTTPException depending on endpoint needs
+            # For now, let it fail so endpoints can handle it
+            raise
+    else:
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
 
 
 def init_db() -> None:

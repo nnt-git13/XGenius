@@ -26,6 +26,11 @@ async def predict_points(
             model_name=request.model_name,
         )
         return result
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"ML prediction requires optional dependencies (joblib, sklearn, numpy, pandas). {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

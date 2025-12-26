@@ -235,7 +235,7 @@ export default function TransfersPage() {
         {!isLoading && (
           <div className="mb-4 flex items-center justify-between">
             <span className="text-white/70 text-sm">
-              Showing {filteredPlayers.length} of {players.length} players
+            Showing {filteredPlayers.length} of {players.length} players
             </span>
             <span className="text-white/50 text-xs">
               Players over budget are greyed out

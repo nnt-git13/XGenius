@@ -1,17 +1,37 @@
 """ML training pipeline."""
 import os
-import joblib
-import numpy as np
-import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Tuple
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.linear_model import Ridge
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.pipeline import Pipeline
-from sklearn.model_selection import cross_val_score
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+
+# Make ML dependencies optional for Vercel deployment
+try:
+    import joblib
+    import numpy as np
+    import pandas as pd
+    from sklearn.compose import ColumnTransformer
+    from sklearn.preprocessing import StandardScaler, OneHotEncoder
+    from sklearn.linear_model import Ridge
+    from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+    from sklearn.pipeline import Pipeline
+    from sklearn.model_selection import cross_val_score
+    from sklearn.metrics import mean_squared_error, mean_absolute_error
+    ML_AVAILABLE = True
+except ImportError:
+    ML_AVAILABLE = False
+    joblib = None  # type: ignore
+    np = None  # type: ignore
+    pd = None  # type: ignore
+    ColumnTransformer = None  # type: ignore
+    StandardScaler = None  # type: ignore
+    OneHotEncoder = None  # type: ignore
+    Ridge = None  # type: ignore
+    RandomForestRegressor = None  # type: ignore
+    GradientBoostingRegressor = None  # type: ignore
+    Pipeline = None  # type: ignore
+    cross_val_score = None  # type: ignore
+    mean_squared_error = None  # type: ignore
+    mean_absolute_error = None  # type: ignore
+
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -71,6 +91,9 @@ def train_models(
     model_dir: Path = None,
 ) -> Dict[str, Dict]:
     """Train multiple models and save them."""
+    if not ML_AVAILABLE:
+        raise ImportError("ML dependencies (joblib, sklearn, numpy, pandas) are not available. ML training requires these packages.")
+    
     if model_dir is None:
         model_dir = settings.MODEL_DIR
     

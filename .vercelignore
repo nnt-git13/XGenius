@@ -2,13 +2,13 @@
 # Based on: https://vercel.com/kb/guide/troubleshooting-function-250mb-limit
 
 # Frontend build artifacts (exclude from API function, but allow for Next.js build)
-# Note: Vercel needs frontend source files to build Next.js
-frontend/.next/
-frontend/node_modules/
-frontend/.cache/
-frontend/test-results/
-frontend/coverage/
-frontend/.vercel/
+# Note: When Root Directory is 'frontend', these paths are relative to frontend/
+.next/
+node_modules/
+.cache/
+test-results/
+coverage/
+.vercel/
 
 # Python cache and build artifacts
 **/__pycache__/
@@ -93,7 +93,7 @@ docker-compose.yml
 **/Dockerfile
 **/docker-compose.yml
 
-# Backend files not needed for API
+# Backend files not needed for API (but keep backend/app/ for imports)
 backend/cli.py
 backend/manage.py
 backend/pyproject.toml
@@ -101,7 +101,6 @@ backend/alembic.ini
 backend/alembic/
 backend/historical/
 backend/models_store/
-backend/vercel.json
 backend/docker-compose.yml
 backend/Dockerfile
 backend/fix_venv_conda.sh

@@ -14,8 +14,9 @@ os.environ.setdefault("VERCEL", "1")
 api_dir = Path(__file__).parent.resolve()
 possible_backend_paths = [
     api_dir.parent.parent / "backend",  # frontend/api/../../backend
-    Path("/vercel/path0") / "backend",  # Vercel build path
+    Path("/vercel/path0") / "backend",  # Vercel build path (when root is frontend, backend is at ../backend)
     Path("/var/task") / "backend",  # Alternative Vercel path
+    Path("/vercel/path0") / "frontend" / ".." / "backend",  # Alternative path structure
 ]
 
 backend_path = None

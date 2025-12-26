@@ -2,10 +2,17 @@
 ML prediction service for player points.
 """
 from __future__ import annotations
-import joblib
 from pathlib import Path
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
+
+# Make joblib optional for Vercel deployment
+try:
+    import joblib
+    JOBLIB_AVAILABLE = True
+except ImportError:
+    JOBLIB_AVAILABLE = False
+    joblib = None  # type: ignore
 
 from app.core.config import settings
 from app.models import Player, WeeklyScore
@@ -26,6 +33,9 @@ class MLPredictor:
         model_name: str = "xgboost",
     ) -> Dict[str, Any]:
         """Predict points for players."""
+        if not JOBLIB_AVAILABLE:
+            raise ImportError("joblib is not available. ML predictions require joblib to be installed.")
+        
         # Load model
         model_path = self.model_dir / f"{model_name}_points.joblib"
         if not model_path.exists():
