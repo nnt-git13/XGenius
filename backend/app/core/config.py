@@ -96,7 +96,11 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Ensure directories exist on initialization
-settings.MODEL_DIR.mkdir(exist_ok=True, parents=True)
-settings.ML_TRAINING_DATA_DIR.mkdir(exist_ok=True, parents=True)
+# Ensure directories exist on initialization (skip on Vercel)
+if not os.environ.get("VERCEL"):
+    try:
+        settings.MODEL_DIR.mkdir(exist_ok=True, parents=True)
+        settings.ML_TRAINING_DATA_DIR.mkdir(exist_ok=True, parents=True)
+    except Exception:
+        pass  # Directory creation may fail on read-only filesystems
 

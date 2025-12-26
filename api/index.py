@@ -10,11 +10,42 @@ from pathlib import Path
 os.environ.setdefault("VERCEL", "1")
 
 # Add backend to path so imports work
-backend_path = Path(__file__).parent.parent / "backend"
-sys.path.insert(0, str(backend_path))
+# When frontend is root: api/ -> ../backend
+# When root is project root: api/ -> ../backend
+# Try multiple possible paths
+api_dir = Path(__file__).parent.resolve()
+possible_backend_paths = [
+    api_dir.parent / "backend",  # Standard: api/../backend
+    api_dir.parent.parent / "backend",  # If api is nested: frontend/api/../backend
+    Path("/vercel/path0") / "backend",  # Vercel build path
+]
+
+backend_path = None
+for path in possible_backend_paths:
+    if path.exists() and (path / "app").exists():
+        backend_path = path
+        break
+
+if backend_path:
+    sys.path.insert(0, str(backend_path))
+    print(f"Added backend path: {backend_path}")
+else:
+    # Last resort: try to find backend relative to current working directory
+    cwd = Path.cwd()
+    if (cwd / "backend").exists():
+        sys.path.insert(0, str(cwd / "backend"))
+        print(f"Added backend path from CWD: {cwd / 'backend'}")
+    else:
+        print(f"WARNING: Could not find backend directory. Tried: {possible_backend_paths}")
 
 # Import the FastAPI app
-from app.main import app
+try:
+    from app.main import app
+    print("Successfully imported FastAPI app")
+except ImportError as e:
+    print(f"ERROR: Failed to import FastAPI app: {e}")
+    print(f"Python path: {sys.path}")
+    raise
 
 # Vercel looks for 'app' or 'handler'
 handler = app

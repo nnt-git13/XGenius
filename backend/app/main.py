@@ -3,6 +3,7 @@ Main FastAPI application entry point.
 """
 from __future__ import annotations
 import logging
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,8 +32,15 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown."""
     # Startup
     logger.info("Starting XGenius application...")
-    init_db()
-    logger.info("Database initialized")
+    # Skip database initialization on Vercel (no database available)
+    if not os.environ.get("VERCEL"):
+        try:
+            init_db()
+            logger.info("Database initialized")
+        except Exception as e:
+            logger.warning(f"Database initialization failed (this is OK on Vercel): {e}")
+    else:
+        logger.info("Skipping database initialization on Vercel")
     yield
     # Shutdown
     logger.info("Shutting down XGenius application...")
