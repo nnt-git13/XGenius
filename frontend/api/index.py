@@ -10,13 +10,13 @@ from pathlib import Path
 os.environ.setdefault("VERCEL", "1")
 
 # Add backend to path so imports work
-# When frontend is root: frontend/api/ -> ../../backend
+# When Root Directory is 'frontend': api/ -> ../backend (relative to repo root)
 api_dir = Path(__file__).parent.resolve()
 possible_backend_paths = [
-    api_dir.parent.parent / "backend",  # frontend/api/../../backend
-    Path("/vercel/path0") / "backend",  # Vercel build path (when root is frontend, backend is at ../backend)
+    api_dir.parent.parent / "backend",  # api/../../backend (when root is frontend, go up to repo root)
+    Path("/vercel/path0") / "backend",  # Vercel build path (repo root)
     Path("/var/task") / "backend",  # Alternative Vercel path
-    Path("/vercel/path0") / "frontend" / ".." / "backend",  # Alternative path structure
+    Path.cwd().parent / "backend" if Path.cwd().name == "frontend" else Path.cwd() / "backend",  # Dynamic based on CWD
 ]
 
 backend_path = None

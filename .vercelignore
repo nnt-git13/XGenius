@@ -9,6 +9,11 @@ node_modules/
 test-results/
 coverage/
 .vercel/
+# Exclude Vite files (not used in Next.js deployment)
+vite.config.ts
+index.html
+src/main.tsx
+src/routes/
 
 # Python cache and build artifacts
 **/__pycache__/
