@@ -273,10 +273,10 @@ class TeamEvaluator:
                                 predicted_points = pred_lookup[db_id]
                             else:
                                 # Fallback to FPL ep_this
-                            ep_this = el.get("ep_this")
-                            try:
+                                ep_this = el.get("ep_this")
+                                try:
                                     predicted_points = float(ep_this) if ep_this is not None else 0.0
-                            except Exception:
+                                except Exception:
                                     predicted_points = 0.0
                             
                             if is_starting:
