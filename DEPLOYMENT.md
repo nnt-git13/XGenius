@@ -9,8 +9,8 @@
 
 2. **Configure Root Directory**
    - In Project Settings → General → Root Directory
-   - Set to: `frontend`
-   - Click "Save"
+   - **IMPORTANT**: Leave Root Directory as repository root (`.` or empty)
+   - Do NOT set it to `frontend` - the root-level `vercel.json` handles the configuration
 
 3. **Set Environment Variables** (optional but recommended)
    - Go to Settings → Environment Variables
